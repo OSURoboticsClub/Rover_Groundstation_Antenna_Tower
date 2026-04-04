@@ -1,0 +1,2 @@
+float32 elevation_deg
+float32 pan_deg

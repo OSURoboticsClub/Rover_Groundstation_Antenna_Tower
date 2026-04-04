@@ -1,0 +1,10 @@
+# Modes
+# 0x00 Disabled
+# 0x01 Manual Control
+# 0x02 Automatic Control
+# 0x03 Homing
+
+uint8 mode
+---
+bool success
+char[] msg

@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            "antenna_control = gs_tower_control.control_script:main"
         ],
     },
 )

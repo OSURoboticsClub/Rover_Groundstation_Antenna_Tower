@@ -15,6 +15,7 @@ from gs_tower_interfaces.srv import AntennaControlService
 from odrive_can.msg import ODriveStatus, ControlMessage, ControllerStatus
 import odrive_can.srv
 import rclpy.client
+import rclpy.executors
 import rclpy.publisher
 import rclpy.subscription
 import rclpy.timer
@@ -338,3 +339,10 @@ class AntennaTowerControlNode(rclpy.Node):
         self.set_axis_states(AxisState.IDLE)
         self.controlMode = self.AntennaControlMode.DISABLED
         self.is_calibrated = False
+
+def main():
+
+    rclpy.spin(
+        AntennaTowerControlNode(),
+        rclpy.executors.Executor()
+    )

@@ -195,6 +195,8 @@ class AntennaTowerControlNode(rclpy.node.Node):
             response.success = False
             response.msg = "Invalid control mode"
 
+        return response
+
 
     def rover_gps_callback(self, fix: NavSatFix):
         self.rover_gps.update(fix)

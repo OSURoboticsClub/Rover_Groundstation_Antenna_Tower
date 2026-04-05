@@ -1,7 +1,6 @@
 from tkinter import DISABLED
 from tkinter.tix import Control
 
-import rclpy
 import math
 import time
 import typing
@@ -9,7 +8,7 @@ from enum import Enum
 from typing import Callable, TypeVar, Generic
 from odrive.enums import ControlMode, InputMode
 from odrive.enums import AxisState
-from coordinate_math import *
+from gs_tower_control.coordinate_math import *
 from gs_tower_interfaces.msg import AntennaControlStatus, AntennaControlManualInput
 from gs_tower_interfaces.srv import AntennaControlService
 from odrive_can.msg import ODriveStatus, ControlMessage, ControllerStatus
@@ -19,6 +18,7 @@ import rclpy.executors
 import rclpy.publisher
 import rclpy.subscription
 import rclpy.timer
+import rclpy.node
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 from sensor_msgs.msg import Imu
 from std_msgs.msg import Float32
@@ -137,7 +137,7 @@ PAN_ANGLE_RANGE  = AxisRange(-170, 170)
 ELEV_ANGLE_RANGE = AxisRange( -30,  30)
 
 
-class AntennaTowerControlNode(rclpy.Node):
+class AntennaTowerControlNode(rclpy.node.Node):
 
     class AntennaControlMode(Enum):
         DISABLED = 0,
@@ -238,6 +238,20 @@ class AntennaTowerControlNode(rclpy.Node):
     def __init__(self):
         super().__init__(node_name="gs_tower")
 
+        self.rover_gps = TemporalValue[NavSatFix]()
+        self.tower_gps = TemporalValue[NavSatFix]()
+
+        self.rover_imu = TemporalValue[Imu]()
+        self.tower_imu = TemporalValue[Imu]()
+
+        self.rover_heading_corrected = TemporalValue[Float32]()
+        self.tower_heading_corrected = TemporalValue[Float32]()
+
+        self.elev_axis_status = TemporalValue[ControllerStatus]()
+        self.pan_axis_status  = TemporalValue[ControllerStatus]()
+
+        self.heading_offset = getMagneticNorthOffsetDegrees()
+
         #publishers for Odrive control messages
         self.elevAxisControlPublisher = self.create_publisher(
             ControlMessage,
@@ -335,14 +349,26 @@ class AntennaTowerControlNode(rclpy.Node):
             self.control_service_callback
         )
 
+        #define variables
+
+
         #initialize axes to idle mode and control to disabled
         self.set_axis_states(AxisState.IDLE)
         self.controlMode = self.AntennaControlMode.DISABLED
         self.is_calibrated = False
 
-def main():
+def main(args=None):
 
-    rclpy.spin(
-        AntennaTowerControlNode(),
-        rclpy.executors.Executor()
-    )
+    try: 
+        rclpy.init(args=args)
+        
+        rclpy.spin(
+            AntennaTowerControlNode(),
+            rclpy.executors.Executor()
+        )
+
+    except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
+        rclpy.shutdown()
+        pass
+    
+

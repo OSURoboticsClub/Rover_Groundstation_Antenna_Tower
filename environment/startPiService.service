@@ -1,0 +1,16 @@
+[Unit]
+After=startCanService.service
+Requires=startCanService.service
+Description=ROS2 PI launch
+
+[Service]
+User=makemorerobot
+Group=makemorerobot
+WorkingDirectory=/home/makemorerobot/source/Rover_Groundstation_Antenna_Tower/environment
+ExecStart=/home/makemorerobot/source/Rover_Groundstation_Antenna_Tower/environment/startPi.sh
+RemainAfterExit=no
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

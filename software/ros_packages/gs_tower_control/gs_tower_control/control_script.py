@@ -243,6 +243,9 @@ ELEV_CONVERSION_FACTOR = 1.0
 PAN_ANGLE_RANGE  = AxisRange(-170, 170)
 ELEV_ANGLE_RANGE = AxisRange( -30,  30)
 
+#timer intervals
+STATUS_PUBLISHER_INTERVAL_SEC = 0.25
+
 
 class AntennaTowerControlNode(rclpy.node.Node):
 
@@ -428,6 +431,12 @@ class AntennaTowerControlNode(rclpy.node.Node):
             AntennaControlService,
             "gs_antenna_control",
             self.control_service_callback
+        )
+
+        #status publishing timer
+        self.create_timer(
+            STATUS_PUBLISHER_INTERVAL_SEC,
+            self.control_status_publisher_callback
         )
 
         #define variables

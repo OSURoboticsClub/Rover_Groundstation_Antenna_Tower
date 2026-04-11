@@ -164,14 +164,14 @@ class OdriveAxis:
     
 
     def enable_axis(self):
-        if self._stateFuture is not None and not self._stateFuture.done():
+        if (self._stateFuture is not None) and (not self._stateFuture.done()):
             self._node.get_logger().warn(f"State change already in progress for axis {self._name}, cannot enable")
             return
         self._stateFuture = self._set_state(AxisState.CLOSED_LOOP_CONTROL)
 
 
     def disable_axis(self):
-        if self._stateFuture is not None and not self._stateFuture.done():
+        if (self._stateFuture is not None) and (not self._stateFuture.done()):
             self._node.get_logger().warn(f"State change already in progress for axis {self._name}, cannot disable")
             return
         self._stateFuture = self._set_state(AxisState.IDLE)
@@ -232,6 +232,7 @@ PAN_AXIS_NAME  = "pan_axis"
 
 #topic names
 MANUAL_CONTROL_TOPIC = "/gs_tower_control/manual_control_input"
+CONTROL_STATUS_TOPIC = "/gs_tower_control/status"
 
 
 #factor to convert motor rotations to degrees for each axis
@@ -246,9 +247,9 @@ ELEV_ANGLE_RANGE = AxisRange( -30,  30)
 class AntennaTowerControlNode(rclpy.node.Node):
 
     class AntennaControlMode(Enum):
-        DISABLED = 0,
-        MANUAL_CONTROL = 1,
-        AUTOMATIC_CONTROL = 2,
+        DISABLED = 0
+        MANUAL_CONTROL = 1
+        AUTOMATIC_CONTROL = 2
         HOMING = 3
 
     controlMode: AntennaControlMode
@@ -280,11 +281,15 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
         if (request.mode == self.AntennaControlMode.DISABLED.value):
             self.controlMode = self.AntennaControlMode.DISABLED
+            self.elev_axis.disable_axis()
+            self.pan_axis.disable_axis()
+            response.success = True
 
         elif (request.mode == self.AntennaControlMode.MANUAL_CONTROL.value):
             self.controlMode = self.AntennaControlMode.MANUAL_CONTROL
             self.elev_axis.enable_axis()
             self.pan_axis.enable_axis()
+            response.success = True
             #TODO: check for homing
 
         elif (request.mode == self.AntennaControlMode.AUTOMATIC_CONTROL.value):
@@ -305,6 +310,24 @@ class AntennaTowerControlNode(rclpy.node.Node):
         self.rover_gps.update(fix)
         if (self.controlMode == self.AntennaControlMode.AUTOMATIC_CONTROL):
             self.execute_automatic_control()
+
+
+    def control_status_publisher_callback(self):
+        def none_to_zero(input):
+            if input is None:
+                return 0
+            else:
+                return input
+
+        msg = AntennaControlStatus()
+
+        msg.operating_mode = self.controlMode.value
+
+        msg.current_elevation_deg = none_to_zero(self.elev_axis.get_position_deg())
+        msg.current_pan_deg = none_to_zero(self.pan_axis.get_position_deg())
+        msg.current_elevation_deg_sec = none_to_zero(self.pan_axis.get_velocity_deg_sec())
+        msg.current_pan_deg_sec = none_to_zero(self.pan_axis.get_velocity_deg_sec())
+        #TODO add checking for setpoint status
 
 
     def execute_automatic_control(self):

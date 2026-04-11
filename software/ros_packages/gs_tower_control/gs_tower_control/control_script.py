@@ -137,6 +137,7 @@ class OdriveAxis:
         self._conversionFactor = conversionFactor
         self._range = range
         self._status = TemporalValue[ControllerStatus](maxTimeoutSec=self._STATE_CLIENT_MAX_TIMEOUT_SEC)
+        self._stateFuture = None
 
         self._node.create_subscription(
             ControllerStatus,

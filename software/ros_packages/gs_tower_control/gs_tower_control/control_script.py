@@ -1,3 +1,5 @@
+from copy import deepcopy
+from telnetlib import EL
 from tkinter import DISABLED
 from tkinter.tix import Control
 
@@ -84,6 +86,9 @@ class TemporalValue(Generic[T]):
     def update(self, value: typing.Optional[T]):
         self._val = value
         self._time = time.time()
+
+    def get_value(self) -> typing.Optional[T]:
+        return deepcopy(self._val) #is a copy really necessary?
     
     def max_timeout_exceeded(self):
         return (time.time() - self._time) > self._maxTimeoutSec
@@ -101,6 +106,110 @@ class TemporalValue(Generic[T]):
         if (timeout < 0):
             raise ValueError("max timeout must be greater than 0")
         self._maxTimeoutSec = timeout
+
+
+class OdriveAxis:
+
+    _AXIS_STATUS_TOPIC  = "/{name}/controller_status"
+    _AXIS_CONTROL_TOPIC = "/{name}/control_message"
+    _AXIS_STATE_SRV     = "/{name}/request_axis_state"
+
+    _STATE_CLIENT_MAX_TIMEOUT_SEC = 3.0
+    
+    _name: str #name of the axis
+    _node: rclpy.Node # ROS node to use for publishers and subscribers
+    _range: typing.Optional[AxisRange] #optional position range restriction (only enforced in position control mode)
+    _conversionFactor: float #factor to convert from motor revolutions to degrees for this axis
+    _status: TemporalValue[ControllerStatus] #current status of the axis controller
+    _controlPublisher: rclpy.publisher.Publisher #publisher for sending control messages to the axis
+    _stateClient: rclpy.client.Client #service client for setting the axis state
+    _stateFuture: typing.Optional[rclpy.client.Future] #future for tracking the status of the most recent state change request
+
+    def __init__(
+            self,
+            name: str,
+            node: rclpy.Node,
+            conversionFactor: float,
+            range: typing.Optional[AxisRange]
+    ):
+        self._name = name
+        self._node = node
+        self._conversionFactor = conversionFactor
+        self._range = range
+        self._status = TemporalValue[ControllerStatus](maxTimeoutSec=self._STATE_CLIENT_MAX_TIMEOUT_SEC)
+
+        self._node.create_subscription(
+            ControllerStatus,
+            self._AXIS_STATUS_TOPIC.format(name=name),
+            self._status.update,
+            10
+        )
+
+        self._controlPublisher = self._node.create_publisher(
+            ControlMessage,
+            self._AXIS_CONTROL_TOPIC.format(name=name),
+            10
+        )
+
+        self._stateClient = self._node.create_client(
+            odrive_can.srv.AxisState,
+            self._AXIS_STATE_SRV.format(name=name)
+        )
+
+    def _set_state(self, state: AxisState):
+        rq = odrive_can.srv.AxisState.Request()
+        rq.axis_requested_state = state
+        return self._stateClient.call_async(rq)
+    
+
+    def enable_axis(self):
+        if self._stateFuture is not None and not self._stateFuture.done():
+            self._node.get_logger().warn(f"State change already in progress for axis {self._name}, cannot enable")
+            return
+        self._stateFuture = self._set_state(AxisState.CLOSED_LOOP_CONTROL)
+
+
+    def disable_axis(self):
+        if self._stateFuture is not None and not self._stateFuture.done():
+            self._node.get_logger().warn(f"State change already in progress for axis {self._name}, cannot disable")
+            return
+        self._stateFuture = self._set_state(AxisState.IDLE)
+
+
+    def get_velocity_deg_sec(self) -> typing.Optional[float]:
+        if self._status.get_value() is None or self._status.max_timeout_exceeded():
+            self._node.get_logger().warn(f"Axis {self._name} status is stale or not yet received, cannot get velocity")
+            return None
+        return self._status.get_value().vel_estimate / self._conversionFactor / 60 # type: ignore
+
+
+    def get_position_deg(self) -> typing.Optional[float]:
+        if self._status.get_value() is None or self._status.max_timeout_exceeded():
+            self._node.get_logger().warn(f"Axis {self._name} status is stale or not yet received, cannot get position")
+            return None
+        return self._status.get_value().pos_estimate / self._conversionFactor # type: ignore
+
+
+    #please set the axis to idle and reenable before calling if in vecocity control mode. TODO: check for this condition
+    def set_position(self, pos: float):
+        if self._range is not None:
+            pos = self._range.clamp(pos)
+
+        msg = ControlMessage()
+        msg.control_mode = ControlMode.POSITION_CONTROL
+        msg.input_mode = InputMode.PASSTHROUGH
+        msg.input_pos = pos * self._conversionFactor #convert from revolutions to degrees
+        self._controlPublisher.publish(msg)
+
+
+    #please set the axis to idle and reenable before calling if in position control mode. TODO: check for this condition
+    def set_velocity(self, vel: float):
+        msg = ControlMessage()
+        msg.control_mode = ControlMode.VELOCITY_CONTROL
+        msg.input_mode = InputMode.PASSTHROUGH
+        msg.input_vel = vel / self._conversionFactor / 60 #convert from deg/s to motor revolutions/min
+        self._controlPublisher.publish(msg)
+
     
 
 
@@ -116,13 +225,9 @@ ROVER_IMU_TOPIC     = "imu/data"
 ROVER_HEADING_TOPIC = "imu/heading"
 ROVER_GPS_TOPIC     = "gps/fix"
 
-ELEV_AXIS_STATUS_TOPIC  = "/elev_axis/controller_status"
-ELEV_AXIS_CONTROL_TOPIC = "/elev_axis/control_message"
-ELEV_AXIS_STATE_SRV     = "/elev_axis/request_axis_state"
-
-PAN_AXIS_STATUS_TOPIC   = "/pan_axis/controller_status"
-PAN_AXIS_CONTROL_TOPIC  = "/pan_axis/control_message"
-PAN_AXIS_STATE_SRV      = "/pan_axis/request_axis_state"
+#axis names
+ELEV_AXIS_NAME = "elev_axis"
+PAN_AXIS_NAME  = "pan_axis"
 
 #topic names
 MANUAL_CONTROL_TOPIC = "/gs_tower_control/manual_control_input"
@@ -149,10 +254,6 @@ class AntennaTowerControlNode(rclpy.node.Node):
     heading_offset: float
     is_calibrated: bool
 
-    elevAxisControlPublisher: rclpy.publisher.Publisher
-    panAxisControlPublisher:  rclpy.publisher.Publisher
-    elevAxisStateClient: rclpy.client.Client
-    panAxisStateClient:  rclpy.client.Client
     manualControlSubscriber: rclpy.subscription.Subscription
 
     rover_gps: TemporalValue[NavSatFix]
@@ -164,14 +265,8 @@ class AntennaTowerControlNode(rclpy.node.Node):
     rover_heading_corrected: TemporalValue[Float32]
     tower_heading_corrected: TemporalValue[Float32]
 
-    elev_axis_status: TemporalValue[ControllerStatus]
-    pan_axis_status:  TemporalValue[ControllerStatus]
-
-    def set_axis_states(self, state: AxisState):
-        rq = odrive_can.srv.AxisState.Request()
-        rq.axis_requested_state = state
-        self.elevAxisStateClient.call(rq)
-        self.panAxisStateClient.call(rq)
+    elev_axis: OdriveAxis
+    pan_axis: OdriveAxis
 
     def control_service_callback(self, request: AntennaControlService.Request, response: AntennaControlService.Response):
         response = AntennaControlService.Response()
@@ -181,7 +276,8 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
         elif (request.mode == self.AntennaControlMode.MANUAL_CONTROL):
             self.controlMode = self.AntennaControlMode.MANUAL_CONTROL
-            self.set_axis_states(AxisState.CLOSED_LOOP_CONTROL)
+            self.elev_axis.enable_axis()
+            self.pan_axis.enable_axis()
             #TODO: check for homing
 
         elif (request.mode == self.AntennaControlMode.AUTOMATIC_CONTROL):
@@ -210,18 +306,9 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
     def execute_manual_control(self, data: AntennaControlManualInput):
         if self.controlMode == self.AntennaControlMode.MANUAL_CONTROL:
-            elevInput = ControlMessage()
-            elevInput.control_mode = ControlMode.POSITION_CONTROL
-            elevInput.input_mode = InputMode.PASSTHROUGH
-            #convert from deg to motor revolutions
-            elevInput.input_pos = data.elevation_deg/360/ELEV_CONVERSION_FACTOR
-            self.elevAxisControlPublisher.publish(elevInput)
-            panInput = ControlMessage()
-            panInput.control_mode = ControlMode.POSITION_CONTROL
-            panInput.input_mode = InputMode.PASSTHROUGH
-            #convert from deg to motor revolutions
-            panInput.input_pos = data.pan_deg/360/PAN_CONVERSION_FACTOR
-            self.panAxisControlPublisher.publish(panInput)
+            #TODO: ensure axis controller is sucessfully enabled before trying to set position
+            self.elev_axis.set_position(data.elevation_deg)
+            self.pan_axis.set_position(data.pan_deg)
 
 
     def execute_homing(self):
@@ -254,29 +341,6 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
         self.heading_offset = getMagneticNorthOffsetDegrees()
 
-        #publishers for Odrive control messages
-        self.elevAxisControlPublisher = self.create_publisher(
-            ControlMessage,
-            ELEV_AXIS_CONTROL_TOPIC,
-            10
-        )
-
-        self.panAxisControlPublisher = self.create_publisher(
-            ControlMessage,
-            PAN_AXIS_CONTROL_TOPIC,
-            10
-        )
-
-        #services clients for setting Odrive axis state
-        self.elevAxisStateClient = self.create_client(
-            odrive_can.srv.AxisState,
-            ELEV_AXIS_STATE_SRV
-        )
-
-        self.panAxisStateClient = self.create_client(
-            odrive_can.srv.AxisState,
-            PAN_AXIS_STATE_SRV
-        )
 
         #rover and tower gps subscriptions
         self.create_subscription(
@@ -322,21 +386,6 @@ class AntennaTowerControlNode(rclpy.node.Node):
             10
         )
 
-        #axis status subscribers
-        self.create_subscription(
-            ControllerStatus,
-            ELEV_AXIS_STATUS_TOPIC,
-            self.elev_axis_status.update,
-            10
-        )
-
-        self.create_subscription(
-            ControllerStatus,
-            PAN_AXIS_STATUS_TOPIC,
-            self.elev_axis_status.update,
-            10
-        )
-
         self.manualControlSubscriber = self.create_subscription(
             AntennaControlManualInput,
             MANUAL_CONTROL_TOPIC,
@@ -352,10 +401,23 @@ class AntennaTowerControlNode(rclpy.node.Node):
         )
 
         #define variables
+        self.elev_axis = OdriveAxis(
+            ELEV_AXIS_NAME,
+            self,
+            ELEV_CONVERSION_FACTOR,
+            ELEV_ANGLE_RANGE
+        )
 
+        self.pan_axis = OdriveAxis(
+            PAN_AXIS_NAME,
+            self,
+            PAN_CONVERSION_FACTOR,
+            PAN_ANGLE_RANGE
+        )
 
         #initialize axes to idle mode and control to disabled
-        self.set_axis_states(AxisState.IDLE)
+        self.elev_axis.disable_axis()
+        self.pan_axis.disable_axis()
         self.controlMode = self.AntennaControlMode.DISABLED
         self.is_calibrated = False
 

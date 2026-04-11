@@ -1,7 +1,4 @@
 from copy import deepcopy
-from telnetlib import EL
-from tkinter import DISABLED
-from tkinter.tix import Control
 
 import math
 import time
@@ -329,7 +326,7 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
         msg.current_elevation_deg = none_to_float_zero(self.elev_axis.get_position_deg())
         msg.current_pan_deg = none_to_float_zero(self.pan_axis.get_position_deg())
-        msg.current_elevation_deg_sec = none_to_float_zero(self.pan_axis.get_velocity_deg_sec())
+        msg.current_elevation_deg_sec = none_to_float_zero(self.elev_axis.get_velocity_deg_sec())
         msg.current_pan_deg_sec = none_to_float_zero(self.pan_axis.get_velocity_deg_sec())
         #TODO add checking for setpoint status
 

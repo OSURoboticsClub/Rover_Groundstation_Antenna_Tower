@@ -429,7 +429,6 @@ def main(args=None):
         
         rclpy.spin(
             AntennaTowerControlNode(),
-            rclpy.executors.Executor()
         )
 
     except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):

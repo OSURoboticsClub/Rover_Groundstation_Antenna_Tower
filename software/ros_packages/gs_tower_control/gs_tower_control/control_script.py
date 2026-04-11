@@ -316,9 +316,9 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
 
     def control_status_publisher_callback(self):
-        def none_to_zero(input):
+        def none_to_float_zero(input):
             if input is None:
-                return 0
+                return 0.0
             else:
                 return input
 
@@ -326,10 +326,10 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
         msg.operating_mode = self.controlMode.value
 
-        msg.current_elevation_deg = none_to_zero(self.elev_axis.get_position_deg())
-        msg.current_pan_deg = none_to_zero(self.pan_axis.get_position_deg())
-        msg.current_elevation_deg_sec = none_to_zero(self.pan_axis.get_velocity_deg_sec())
-        msg.current_pan_deg_sec = none_to_zero(self.pan_axis.get_velocity_deg_sec())
+        msg.current_elevation_deg = none_to_float_zero(self.elev_axis.get_position_deg())
+        msg.current_pan_deg = none_to_float_zero(self.pan_axis.get_position_deg())
+        msg.current_elevation_deg_sec = none_to_float_zero(self.pan_axis.get_velocity_deg_sec())
+        msg.current_pan_deg_sec = none_to_float_zero(self.pan_axis.get_velocity_deg_sec())
         #TODO add checking for setpoint status
 
 

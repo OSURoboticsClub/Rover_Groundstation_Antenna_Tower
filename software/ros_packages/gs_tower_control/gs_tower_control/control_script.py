@@ -260,6 +260,7 @@ class AntennaTowerControlNode(rclpy.node.Node):
     is_calibrated: bool
 
     manualControlSubscriber: rclpy.subscription.Subscription
+    statusPublisher: rclpy.publisher.Publisher
 
     rover_gps: TemporalValue[NavSatFix]
     tower_gps: TemporalValue[NavSatFix]
@@ -331,6 +332,8 @@ class AntennaTowerControlNode(rclpy.node.Node):
         msg.current_elevation_deg_sec = none_to_float_zero(self.pan_axis.get_velocity_deg_sec())
         msg.current_pan_deg_sec = none_to_float_zero(self.pan_axis.get_velocity_deg_sec())
         #TODO add checking for setpoint status
+
+        self.statusPublisher.publish(msg)
 
 
     def execute_automatic_control(self):
@@ -437,6 +440,13 @@ class AntennaTowerControlNode(rclpy.node.Node):
         self.create_timer(
             STATUS_PUBLISHER_INTERVAL_SEC,
             self.control_status_publisher_callback
+        )
+
+        #status publisher
+        self.statusPublisher = self.create_publisher(
+            AntennaControlStatus,
+            CONTROL_STATUS_TOPIC,
+            10
         )
 
         #define variables

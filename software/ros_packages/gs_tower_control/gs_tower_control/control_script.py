@@ -270,6 +270,12 @@ class AntennaTowerControlNode(rclpy.node.Node):
     pan_axis: OdriveAxis
 
     def control_service_callback(self, request: AntennaControlService.Request, response: AntennaControlService.Response):
+        
+        def str_to_ints(input: str):
+            result =list[int]()
+            for c in input:
+                result.append(int(c))
+
         response = AntennaControlService.Response()
 
         if (request.mode == self.AntennaControlMode.DISABLED):
@@ -283,14 +289,14 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
         elif (request.mode == self.AntennaControlMode.AUTOMATIC_CONTROL):
             response.success = False
-            response.msg = "Automatic control not implemented"
+            response.msg = str_to_ints("Automatic control not implemented")
 
         elif (request.mode == self.AntennaControlMode.HOMING):
             pass
 
         else:
             response.success = False
-            response.msg = "Invalid control mode"
+            response.msg = str_to_ints("Invalid control mode")
 
         return response
 

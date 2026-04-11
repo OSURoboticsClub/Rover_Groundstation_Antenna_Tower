@@ -117,7 +117,7 @@ class OdriveAxis:
     _STATE_CLIENT_MAX_TIMEOUT_SEC = 3.0
     
     _name: str #name of the axis
-    _node: rclpy.Node # ROS node to use for publishers and subscribers
+    _node: rclpy.node.Node # ROS node to use for publishers and subscribers
     _range: typing.Optional[AxisRange] #optional position range restriction (only enforced in position control mode)
     _conversionFactor: float #factor to convert from motor revolutions to degrees for this axis
     _status: TemporalValue[ControllerStatus] #current status of the axis controller
@@ -128,7 +128,7 @@ class OdriveAxis:
     def __init__(
             self,
             name: str,
-            node: rclpy.Node,
+            node: rclpy.node.Node,
             conversionFactor: float,
             range: typing.Optional[AxisRange]
     ):

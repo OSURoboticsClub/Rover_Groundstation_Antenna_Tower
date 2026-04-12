@@ -148,7 +148,19 @@ def getElevationAngleDegrees(v1: LatLong, v2: LatLong):
         vd.dot(v1) / (vd.mag() * v1.mag())
     )) + 90
 
-def getMagneticNorthOffsetDegrees() -> float:
-    return 0 #TODO: Implement this
+def getMagneticNorthOffsetDegrees(v1: LatLong) -> float:
+    #location of magnetic north
+    mn = LatLong(EARTH_RADIUS_M, 86.494, 162.876)
+    #vector pointing toward true north
+    vn = LatLong(r=v1.r(), lat=v1.lat() + 90, long=v1.long())
+    vd = mn - v1
+    #the projection of the difference vector onto the ground plane
+    vdg = vd - (v1 * ((vd.dot(v1)) / (v1.mag() ** 2)))
+    #obtain the cross product
+    cross = vdg.cross(vn)
+    return math.degrees(
+        math.acos(vdg.dot(vn) / (vdg.r() * vn.r()))
+    ) * (-1 if math.isclose((v1.norm() + cross.norm()).mag(), 0, abs_tol=0.1) else 1)
+
 
 

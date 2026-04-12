@@ -243,6 +243,12 @@ ELEV_ANGLE_RANGE = AxisRange( -30,  30)
 #timer intervals
 STATUS_PUBLISHER_INTERVAL_SEC = 0.25
 
+#timeouts
+ROVER_GPS_ALLOWED_TIMEOUT = 3.5
+ROVER_IMU_ALLOWED_TIMEOUT = 1.0
+TOWER_GPS_ALLOWED_TIMEOUT = 15.0
+TOWER_IMU_ALLOWED_TIMEOUT = 15.0
+
 
 class AntennaTowerControlNode(rclpy.node.Node):
 
@@ -360,17 +366,14 @@ class AntennaTowerControlNode(rclpy.node.Node):
     def __init__(self):
         super().__init__(node_name="gs_tower")
 
-        self.rover_gps = TemporalValue[NavSatFix]()
-        self.tower_gps = TemporalValue[NavSatFix]()
+        self.rover_gps = TemporalValue[NavSatFix](maxTimeoutSec=ROVER_GPS_ALLOWED_TIMEOUT)
+        self.tower_gps = TemporalValue[NavSatFix](maxTimeoutSec=TOWER_GPS_ALLOWED_TIMEOUT)
 
-        self.rover_imu = TemporalValue[Imu]()
-        self.tower_imu = TemporalValue[Imu]()
+        self.rover_imu = TemporalValue[Imu](maxTimeoutSec=ROVER_IMU_ALLOWED_TIMEOUT)
+        self.tower_imu = TemporalValue[Imu](maxTimeoutSec=TOWER_IMU_ALLOWED_TIMEOUT)
 
-        self.rover_heading_corrected = TemporalValue[Float32]()
-        self.tower_heading_corrected = TemporalValue[Float32]()
-
-        self.elev_axis_status = TemporalValue[ControllerStatus]()
-        self.pan_axis_status  = TemporalValue[ControllerStatus]()
+        self.rover_heading_corrected = TemporalValue[Float32](maxTimeoutSec=ROVER_IMU_ALLOWED_TIMEOUT)
+        self.tower_heading_corrected = TemporalValue[Float32](maxTimeoutSec=TOWER_IMU_ALLOWED_TIMEOUT)
 
         self.heading_offset = getMagneticNorthOffsetDegrees()
 

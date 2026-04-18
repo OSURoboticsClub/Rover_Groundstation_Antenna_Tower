@@ -1,6 +1,8 @@
 from copy import deepcopy
 
+from faulthandler import is_enabled
 import math
+from re import S
 import time
 import typing
 from enum import Enum
@@ -121,6 +123,8 @@ class OdriveAxis:
     _controlPublisher: rclpy.publisher.Publisher #publisher for sending control messages to the axis
     _stateClient: rclpy.client.Client #service client for setting the axis state
     _stateFuture: typing.Optional[rclpy.client.Future] #future for tracking the status of the most recent state change request
+    _pos_offset:float
+
 
     def __init__(
             self,
@@ -135,6 +139,7 @@ class OdriveAxis:
         self._range = range
         self._status = TemporalValue[ControllerStatus](maxTimeoutSec=self._STATE_CLIENT_MAX_TIMEOUT_SEC)
         self._stateFuture = None
+        self._pos_offset = 0
 
         self._node.create_subscription(
             ControllerStatus,
@@ -160,18 +165,20 @@ class OdriveAxis:
         return self._stateClient.call_async(rq)
     
 
-    def enable_axis(self):
+    def enable_axis(self) -> bool:
         if (self._stateFuture is not None) and (not self._stateFuture.done()):
             self._node.get_logger().warn(f"State change already in progress for axis {self._name}, cannot enable")
-            return
+            return False
         self._stateFuture = self._set_state(AxisState.CLOSED_LOOP_CONTROL)
+        return True
 
 
-    def disable_axis(self):
+    def disable_axis(self) -> bool:
         if (self._stateFuture is not None) and (not self._stateFuture.done()):
             self._node.get_logger().warn(f"State change already in progress for axis {self._name}, cannot disable")
-            return
+            return False
         self._stateFuture = self._set_state(AxisState.IDLE)
+        return True
 
 
     def get_velocity_deg_sec(self) -> typing.Optional[float]:
@@ -186,7 +193,20 @@ class OdriveAxis:
             self._node.get_logger().warn(f"Axis {self._name} status is stale or not yet received, cannot get position")
             return None
         return self._status.get_value().pos_estimate / self._conversionFactor # type: ignore
+    
 
+    def is_changing_state(self) -> bool:
+        if self._stateFuture != None:
+            return not self._stateFuture.done()
+        
+        return False
+
+
+    def is_enabled(self) -> typing.Optional[bool]:
+        if self._status.get_value() is None or self._status.max_timeout_exceeded() or self.is_changing_state():
+            return False
+        else:
+            return self._status.get_value().axis_state == AxisState.CLOSED_LOOP_CONTROL
 
     #please set the axis to idle and reenable before calling if in vecocity control mode. TODO: check for this condition
     def set_position(self, pos: float):
@@ -208,7 +228,37 @@ class OdriveAxis:
         msg.input_vel = vel / self._conversionFactor / 60 #convert from deg/s to motor revolutions/min
         self._controlPublisher.publish(msg)
 
-    
+
+    def reset_pos(self, new_pos_deg: float) -> bool:
+        curr_pos_deg = self.get_position_deg()
+        if (curr_pos_deg is None):
+            return False
+        
+        self._pos_offset = new_pos_deg - curr_pos_deg
+        return True
+
+
+    def get_range_upper(self) -> float:
+        if self._range != None:
+            return self._range.get_max()
+        else:
+            return math.inf
+
+
+    def get_range_lower(self) -> float:
+        if self._range != None:
+            return self._range.get_min()
+        else:
+            return -math.inf
+
+
+
+# --------- HELPER FUNCTIONS ----------
+def none_to_float_zero(input):
+    if input is None:
+        return 0.0
+    else:
+        return input   
 
 
 
@@ -237,6 +287,7 @@ PAN_CONVERSION_FACTOR  = 1.0
 ELEV_CONVERSION_FACTOR = 1.0
 
 #allowed angle ranges for each axis (deg)
+#assumed that limits are a hard stop
 PAN_ANGLE_RANGE  = AxisRange(-170, 170)
 ELEV_ANGLE_RANGE = AxisRange( -30,  30)
 
@@ -249,6 +300,24 @@ ROVER_IMU_ALLOWED_TIMEOUT = 1.0
 TOWER_GPS_ALLOWED_TIMEOUT = 15.0
 TOWER_IMU_ALLOWED_TIMEOUT = 15.0
 
+#physical dimensions
+ROVER_HEIGHT_METERS = 3
+TOWER_HEIGHT_METERS = 3
+
+#homing velocities
+ELEV_AXIS_HOMING_VELOCITY_DEG_SEC = 3.0
+PAN_AXIS_HOMING_VELOCITY_DEG_SEC  = 3.0
+
+#axis velocity tolerances
+ELEV_AXIS_VELOCITY_TOLERANCE_DEG_SEC = 1.0
+PAN_AXIS_VELOCITY_TOLERANCE_DEG_SEC  = 1.0
+
+#axis position tolerances
+ELEV_AXIS_POSITION_TOLERANCE_DEG = 1.0
+PAN_AXIS_POSITION_TOLERANCE_DEG  = 1.0
+
+#homing motor spin up time
+HOMING_START_TIME_SEC = 0.5
 
 class AntennaTowerControlNode(rclpy.node.Node):
 
@@ -277,6 +346,38 @@ class AntennaTowerControlNode(rclpy.node.Node):
     elev_axis: OdriveAxis
     pan_axis: OdriveAxis
 
+    homing_running: TemporalValue[bool]
+    elev_calibrated: bool
+    pan_calibrated: bool
+
+    def is_safe_for_control(self) -> bool:
+            result = False  
+            #check for valid conditions to enter automatic mode
+            if not self.is_calibrated:
+                result = False
+                self.get_logger().warn("Unsafe for control: not homed")
+            elif self.rover_gps.max_timeout_exceeded() and self.rover_gps.get_value() != None:
+                result = False
+                self.get_logger().warn("Unsafe for control: rover gps timeout exceeded")
+            elif self.tower_gps.max_timeout_exceeded() and self.tower_gps.get_value() != None: 
+                result = False
+                self.get_logger().warn("Unsafe for control: tower gps timeout exceeded")
+            elif self.rover_imu.max_timeout_exceeded() and self.rover_imu.get_value() != None:
+                result = False
+                self.get_logger().warn("Unsafe for control: rover imu timeout exceeded")
+            elif self.tower_imu.max_timeout_exceeded()  and self.tower_imu.get_value() != None:
+                result = False
+                self.get_logger().warn("Unsafe for control: tower imu timeout exceeded")
+            elif self.elev_axis.get_position_deg() == None:
+                result = False
+                self.get_logger().warn("Unsafe for control: elevation axis status timeout exceeded")
+            elif self.pan_axis.get_position_deg() == None:
+                result = False
+                self.get_logger().warn("Unsafe for control: pan axis status timeout exceeded")
+            
+            return True
+    
+
     def control_service_callback(self, request: AntennaControlService.Request, response: AntennaControlService.Response):
         
         def str_to_ints(input: str):
@@ -287,24 +388,50 @@ class AntennaTowerControlNode(rclpy.node.Node):
         response = AntennaControlService.Response()
 
         if (request.mode == self.AntennaControlMode.DISABLED.value):
-            self.controlMode = self.AntennaControlMode.DISABLED
-            self.elev_axis.disable_axis()
-            self.pan_axis.disable_axis()
+            result =  self.elev_axis.disable_axis()
+            result &= self.pan_axis.disable_axis()
+            if (not result):
+                response.success = False
+                return
             response.success = True
+            self.controlMode = self.AntennaControlMode.DISABLED
 
         elif (request.mode == self.AntennaControlMode.MANUAL_CONTROL.value):
-            self.controlMode = self.AntennaControlMode.MANUAL_CONTROL
-            self.elev_axis.enable_axis()
-            self.pan_axis.enable_axis()
+            if not self.is_safe_for_control():
+                response.success = False
+                #response.msg = str_to_ints("Unsafe conditions for automatic control")
+                return response
+            
+            result =  self.elev_axis.enable_axis()
+            result &= self.pan_axis.enable_axis()
+            if (not result):
+                response.success = False
+                return
             response.success = True
-            #TODO: check for homing
+            self.controlMode = self.AntennaControlMode.MANUAL_CONTROL
 
         elif (request.mode == self.AntennaControlMode.AUTOMATIC_CONTROL.value):
-            response.success = False
+
+            if not self.is_safe_for_control():
+                response.success = False
+                #response.msg = str_to_ints("Unsafe conditions for automatic control")
+                return response
+
+            result =  self.elev_axis.enable_axis()
+            result &= self.pan_axis.enable_axis()
+            if (not result):
+                response.success = False
+                return
+            response.success = True
+            self.controlMode = self.AntennaControlMode.AUTOMATIC_CONTROL
+            response.success = True
             #response.msg = str_to_ints("Automatic control not implemented")
+            return response
 
         elif (request.mode == self.AntennaControlMode.HOMING.value):
-            pass
+            self.elev_axis.disable_axis()
+            self.pan_axis.disable_axis()
+            self.controlMode = self.AntennaControlMode.HOMING
 
         else:
             response.success = False
@@ -319,12 +446,12 @@ class AntennaTowerControlNode(rclpy.node.Node):
             self.execute_automatic_control()
 
 
+    def tower_gps_callback(self, fix: NavSatFix):
+        self.tower_gps.update(fix)
+        self.heading_offset = getMagneticNorthOffsetDegrees(LatLong(EARTH_RADIUS_M + fix.altitude, fix.latitude, fix.longitude))
+
+
     def control_status_publisher_callback(self):
-        def none_to_float_zero(input):
-            if input is None:
-                return 0.0
-            else:
-                return input
 
         msg = AntennaControlStatus()
 
@@ -340,22 +467,106 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
 
     def execute_automatic_control(self):
-        pass
+        if self.controlMode == self.AntennaControlMode.AUTOMATIC_CONTROL:
+            if not self.is_safe_for_control():
+                self.elev_axis.disable_axis()
+                self.pan_axis.disable_axis()
+                self.controlMode = self.AntennaControlMode.DISABLED
+                return
+            
+        #TODO update to use imu orientations
+        rawLoc = self.rover_gps.get_value()
+        roverLoc = LatLong(
+            EARTH_RADIUS_M + rawLoc.altitude + ROVER_HEIGHT_METERS,
+            rawLoc.latitude,
+            rawLoc.longitude
+        )
+
+        rawLoc = self.tower_gps.get_value()
+        towerLoc = LatLong(
+            EARTH_RADIUS_M + rawLoc.altitude + ROVER_HEIGHT_METERS,
+            rawLoc.latitude,
+            rawLoc.longitude
+        )
+
+        self.pan_axis.set_position(getPanAngleDegrees(roverLoc, towerLoc))
+        self.elev_axis.set_position(getElevationAngleDegrees(roverLoc, towerLoc))
 
 
     def execute_manual_control(self, data: AntennaControlManualInput):
+
         if self.controlMode == self.AntennaControlMode.MANUAL_CONTROL:
-            #TODO: ensure axis controller is sucessfully enabled before trying to set position
+            if not self.is_safe_for_control():
+                self.elev_axis.disable_axis()
+                self.pan_axis.disable_axis()
+                self.controlMode = self.AntennaControlMode.DISABLED
+                return
+
             self.elev_axis.set_position(data.elevation_deg)
             self.pan_axis.set_position(data.pan_deg)
 
 
     def execute_homing(self):
-        pass
+        #quit if the controller is changing state
+        if (self.elev_axis.is_changing_state() or self.pan_axis.is_changing_state()):
+            return
+        
+        #once the axis is disabled, set it to closed loop control
+        if (self.elev_axis.is_enabled() or not self.pan_axis.is_enabled()):
+            self.elev_axis.enable_axis()
+            self.pan_axis.enable_axis()
+            return
+        
+        #set the axis to a constant velocity
+        if (not self.homing_running.get_value()):
+            self.elev_axis.set_velocity(ELEV_AXIS_HOMING_VELOCITY_DEG_SEC)
+            self.pan_axis.set_velocity(PAN_AXIS_HOMING_VELOCITY_DEG_SEC)
 
+        #start checking velocity once time has elapsed
+        if (self.homing_running.get_value() and self.homing_running.max_timeout_exceeded()):
+            elev_vel = self.elev_axis.get_velocity_deg_sec()
+            pan_vel  = self.pan_axis.get_velocity_deg_sec()
+            if elev_vel is None or pan_vel is None:
+                self.get_logger().error("Motor communication lost, homing sequence aborted.")
+                self.pan_axis.disable_axis()
+                self.elev_axis.disable_axis()
+                self.controlMode = self.AntennaControlMode.DISABLED
+                return
+            
+            if math.isclose(elev_vel, 0, abs_tol=ELEV_AXIS_VELOCITY_TOLERANCE_DEG_SEC):
+                self.elev_axis.set_velocity(0)
+                if (not self.elev_axis.reset_pos(self.elev_axis.get_range_lower())):
+                    self.get_logger().error("Failed to get elevation axis position, homing aborted.")
+                    self.elev_axis.disable_axis()
+                    self.pan_axis.disable_axis()
+                    self.controlMode = self.AntennaControlMode.DISABLED
+                    return
+                self.elev_calibrated = True
 
-    def start_homing(self):
-        pass
+            if pan_vel is None or pan_vel is None:
+                self.get_logger().error("Motor communication lost, homing sequence aborted.")
+                self.pan_axis.disable_axis()
+                self.elev_axis.disable_axis()
+                self.controlMode = self.AntennaControlMode.DISABLED
+                return
+            
+            if math.isclose(pan_vel, 0, abs_tol=PAN_AXIS_VELOCITY_TOLERANCE_DEG_SEC):
+                self.pan_axis.set_velocity(0)
+                if (not self.pan_axis.reset_pos(self.pan_axis.get_range_lower())):
+                    self.get_logger().error("Failed to get elevation axis position, homing aborted.")
+                    self.elev_axis.disable_axis()
+                    self.pan_axis.disable_axis()
+                    self.controlMode = self.AntennaControlMode.DISABLED
+                    return
+                self.pan_calibrated = True
+
+            if self.elev_calibrated and self.pan_calibrated:
+                self.elev_axis.disable_axis()
+                self.pan_axis.disable_axis()
+                self.controlMode = self.AntennaControlMode.DISABLED
+                self.is_calibrated = True
+                self.get_logger().info("Homing completed successfully!")
+
 
 
     def apply_heading_correction(self, hdg: Float32) -> Float32:
@@ -375,7 +586,9 @@ class AntennaTowerControlNode(rclpy.node.Node):
         self.rover_heading_corrected = TemporalValue[Float32](maxTimeoutSec=ROVER_IMU_ALLOWED_TIMEOUT)
         self.tower_heading_corrected = TemporalValue[Float32](maxTimeoutSec=TOWER_IMU_ALLOWED_TIMEOUT)
 
-        self.heading_offset = getMagneticNorthOffsetDegrees()
+        self.heading_offset = 0
+
+        self.homing_running = TemporalValue[bool](False, maxTimeoutSec=0.5)
 
 
         #rover and tower gps subscriptions
@@ -389,7 +602,7 @@ class AntennaTowerControlNode(rclpy.node.Node):
         self.create_subscription(
             NavSatFix,
             TOWER_GPS_TOPIC,
-            self.tower_gps.update,
+            self.tower_gps_callback,
             10
         )
 
@@ -469,6 +682,9 @@ class AntennaTowerControlNode(rclpy.node.Node):
         self.pan_axis.disable_axis()
         self.controlMode = self.AntennaControlMode.DISABLED
         self.is_calibrated = False
+        self.elev_calibrated = False
+        self.pan_calibrated = False
+
 
 def main(args=None):
 

@@ -78,14 +78,16 @@ class Vec3:
     def norm(self) -> "Vec3":
         return self * (1 / self.mag())
     
-    def planeProj(self, v: "Vec3", n: "Vec3") -> "Vec3":
-        return v - (n * ((v.dot(n)) / (n.mag() ** 2)))
-    
-    def angle(self, v1, v2, n) -> float:
-        cross = v2.cross(v1)
-        return math.degrees(
-        math.acos(v1.dot(v2) / (v1.mag() * v2.mag()))
-    ) * (-1 if math.isclose((n.norm() + cross.norm()).mag(), 0, abs_tol=0.1) else 1)
+
+
+def planeProj(v: "Vec3", n: "Vec3") -> "Vec3":
+    return v - (n * ((v.dot(n)) / (n.mag() ** 2)))
+
+def angle(v1, v2, n) -> float:
+    cross = v2.cross(v1)
+    return math.degrees(
+    math.acos(v1.dot(v2) / (v1.mag() * v2.mag()))
+) * (-1 if math.isclose((n.norm() + cross.norm()).mag(), 0, abs_tol=0.1) else 1)
 
 
 

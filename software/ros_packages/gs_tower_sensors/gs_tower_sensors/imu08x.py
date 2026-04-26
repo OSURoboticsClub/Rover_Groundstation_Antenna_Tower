@@ -36,7 +36,13 @@ def run_with_timeout(func: Callable, timeoutSec: float):
 
     async def run():
         return func
-    result = asyncio.wait_for(run(), timeoutSec)
+    
+    async def get_result():
+        res = await asyncio.wait_for(run(), timeoutSec)
+        return res
+    
+    result = asyncio.run(get_result())
+    
     return result
 
 #####################################

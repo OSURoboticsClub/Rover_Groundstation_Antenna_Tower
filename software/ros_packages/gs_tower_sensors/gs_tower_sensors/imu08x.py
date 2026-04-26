@@ -3,7 +3,9 @@
 # Imports
 #####################################
 # Python native imports
+import asyncio
 from time import time, sleep
+from typing import Callable
 import adafruit_bno08x.i2c
 import board
 import busio
@@ -27,11 +29,21 @@ IMU_HEADING_TOPIC = "gs_tower_imu/heading"
 
 DEFAULT_HERTZ = 100  # Changed from 1000 to reasonable rate
 
+IMU_IO_TIMEOUT_SEC = 0.1
+
+#Runs function with timeout. Throws asyncio.TimeoutError if timeout exceeded
+def run_with_timeout(func: Callable, timeoutSec: float):
+
+    async def run():
+        return func
+    result = asyncio.wait_for(run(), timeoutSec)
+    return result
 
 #####################################
 # IMU Node Class Definition
 #####################################
 class IMUNode(Node):
+    
     def __init__(self):
         super().__init__(NODE_NAME)
 
@@ -54,15 +66,21 @@ class IMUNode(Node):
         
         # Magnetic declination (adjust for your location)
         self.magnetic_declination = 0
-        
-        # Configure sensor, enable reports
-        self.imu.enable_feature(adafruit_bno08x.BNO_REPORT_ROTATION_VECTOR)
-        self.imu.enable_feature(adafruit_bno08x.BNO_REPORT_GYROSCOPE)
-        self.imu.enable_feature(adafruit_bno08x.BNO_REPORT_LINEAR_ACCELERATION)
-        self.imu.enable_feature(adafruit_bno08x.BNO_REPORT_MAGNETOMETER)
 
         # Start timer
         self.timer = self.create_timer(self.wait_time, self.main_loop)
+
+    def get_quaternion(self):
+        return self.imu.quaternion
+    
+    def get_gyro(self):
+        return self.imu.gyro
+    
+    def get_linear_accel(self):
+        return self.imu.acceleration
+    
+    def get_magnetometer(self):
+        return self.imu.magnetic
 
     def main_loop(self):
         """Main processing loop"""
@@ -83,7 +101,7 @@ class IMUNode(Node):
             imu_msg.header.frame_id = "imu_link"
             
             # Orientation (quaternion from BNO055 sensor fusion)
-            quat = self.imu.quaternion
+            quat = run_with_timeout(self.get_quaternion, IMU_IO_TIMEOUT_SEC)
             if quat and None not in quat:
                 imu_msg.orientation.x = float(quat[0])
                 imu_msg.orientation.y = float(quat[1])
@@ -99,7 +117,7 @@ class IMUNode(Node):
                 imu_msg.orientation_covariance[0] = -1
             
             # Angular velocity (gyroscope) in rad/s
-            gyro = self.imu.gyro
+            gyro = run_with_timeout(self.get_gyro, IMU_IO_TIMEOUT_SEC)
             if gyro and None not in gyro:
                 imu_msg.angular_velocity.x = float(gyro[0])
                 imu_msg.angular_velocity.y = float(gyro[1])
@@ -113,7 +131,7 @@ class IMUNode(Node):
                 imu_msg.angular_velocity_covariance[0] = -1
             
             # Linear acceleration in m/s²
-            accel = self.imu.linear_acceleration  # Gravity already removed
+            accel = run_with_timeout(self.get_linear_accel, IMU_IO_TIMEOUT_SEC)  # Gravity already removed
             if accel and None not in accel:
                 imu_msg.linear_acceleration.x = float(accel[0])
                 imu_msg.linear_acceleration.y = float(accel[1])
@@ -129,7 +147,7 @@ class IMUNode(Node):
             self.imu_data_publisher.publish(imu_msg)
             
             # === Publish magnetometer data separately ===
-            mag = self.imu.magnetic
+            mag = run_with_timeout(self.get_magnetometer, IMU_IO_TIMEOUT_SEC)
             if mag and None not in mag:
                 mag_msg = MagneticField()
                 mag_msg.header.stamp = current_time
@@ -153,7 +171,7 @@ class IMUNode(Node):
     def publish_heading(self):
         """Publish compass heading in degrees"""
         try:
-            quat = self.imu.quaternion
+            quat = run_with_timeout(self.get_quaternion, IMU_IO_TIMEOUT_SEC)
             hdg = None
             if quat is not None:
                 hdg = angle(planeProj(Vec3(quat[0], quat[1], quat[2]), Vec3(0, 0, 1)), Vec3(1, 0, 0), Vec3(0, 0, 1))

@@ -100,7 +100,7 @@ class IMUNode(Node):
         return self.imu.gyro
     
     def get_linear_accel(self):
-        return self.imu.acceleration
+        return self.imu.linear_acceleration
     
     def get_magnetometer(self):
         return self.imu.magnetic

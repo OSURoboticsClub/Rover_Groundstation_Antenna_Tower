@@ -3,8 +3,8 @@
 # Imports
 #####################################
 # Python native imports
-import asyncio
-from time import time, sleep
+import threading
+import time
 from typing import Callable
 import adafruit_bno08x.i2c
 import board
@@ -31,19 +31,30 @@ DEFAULT_HERTZ = 100  # Changed from 1000 to reasonable rate
 
 IMU_IO_TIMEOUT_SEC = 0.1
 
-#Runs function with timeout. Throws asyncio.TimeoutError if timeout exceeded
+#Runs function with timeout. Throws TimeoutError if timeout exceeded
 def run_with_timeout(func: Callable, timeoutSec: float):
 
-    async def run():
-        return func
-    
-    async def get_result():
-        res = await asyncio.wait_for(run(), timeoutSec)
-        return res
-    
-    result = asyncio.run(get_result())
+    result = None
+
+    def get_result():
+        result = func()
+
+    runner = threading.Thread(target=get_result)
+    timer  = threading.Thread(target=time.sleep, args=[timeoutSec])
+
+    runner.start()
+    timer.start()
+
+    while (runner.is_alive() and timer.is_alive()):
+        pass
+
+    if (runner.is_alive()):
+        raise TimeoutError(f"Timeout Exceeded Running: {func}")
     
     return result
+    
+
+    
 
 #####################################
 # IMU Node Class Definition

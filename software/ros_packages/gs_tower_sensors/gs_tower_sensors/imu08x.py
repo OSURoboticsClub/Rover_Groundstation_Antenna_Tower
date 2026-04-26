@@ -80,6 +80,12 @@ class IMUNode(Node):
         # Initialize I2C and BNO08X
         self.i2c = busio.I2C(board.SCL, board.SDA)
         self.imu = adafruit_bno08x.i2c.BNO08X_I2C(self.i2c)
+
+        # Enable Reports
+        self.imu.enable_feature(adafruit_bno08x.BNO_REPORT_ROTATION_VECTOR)
+        self.imu.enable_feature(adafruit_bno08x.BNO_REPORT_GYROSCOPE)
+        self.imu.enable_feature(adafruit_bno08x.BNO_REPORT_LINEAR_ACCELERATION)
+        self.imu.enable_feature(adafruit_bno08x.BNO_REPORT_MAGNETOMETER)
         
         # Magnetic declination (adjust for your location)
         self.magnetic_declination = 0

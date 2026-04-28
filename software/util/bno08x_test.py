@@ -2,11 +2,15 @@ import board
 import busio
 import adafruit_bno08x
 import adafruit_bno08x.i2c
+import adafruit_bno08x.uart
+import serial
 import time
 
 def main():
 	i2c = busio.I2C(board.SCL, board.SDA)
 	imu = adafruit_bno08x.i2c.BNO08X_I2C(i2c)
+	#uart = serial.Serial("/dev/serial0", 115200)
+	#imu = adafruit_bno08x.uart.BNO08X_UART(uart)
 
 	imu.enable_feature(adafruit_bno08x.BNO_REPORT_ROTATION_VECTOR)
 	imu.enable_feature(adafruit_bno08x.BNO_REPORT_GYROSCOPE)

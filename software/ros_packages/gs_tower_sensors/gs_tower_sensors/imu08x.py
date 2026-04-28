@@ -27,9 +27,9 @@ DEFAULT_IMU_TOPIC = "gs_tower_imu/data"
 DEFAULT_MAG_TOPIC = "gs_tower_imu/mag"
 IMU_HEADING_TOPIC = "gs_tower_imu/heading"
 
-DEFAULT_HERTZ = 100  # Changed from 1000 to reasonable rate
+DEFAULT_HERTZ = 10  # Changed from 1000 to reasonable rate
 
-IMU_IO_TIMEOUT_SEC = 0.1
+IMU_IO_TIMEOUT_SEC = 1.0
 
 #Runs function with timeout. Throws TimeoutError if timeout exceeded
 def run_with_timeout(func: Callable, timeoutSec: float):

@@ -10,16 +10,28 @@ class GPSNode(Node):
     def __init__(self):
         super().__init__('gs_tower_gps_node')
 
-        self.ser = serial.Serial('/dev/ttyACM0', baudrate=38400, timeout=1)
+        self.ser = serial.Serial('/dev/ttyGPS', baudrate=38400, timeout=1)
         self.get_logger().info(f"Serial port {self.ser.port} opened at {self.ser.baudrate} baud")
 
         self.fix_pub = self.create_publisher(NavSatFix, 'gs_tower_gps/fix', 10)
 
-        self.rtcm_sub = self.create_subscription(UInt8MultiArray, 'rtcm', self.rtcm_callback, 10)
-
+        self.rtcm_pub = self.create_publisher(
+            UInt8MultiArray,
+            'rtcm',
+            10
+        )
         self.buffer = bytearray()
         self.timer = self.create_timer(0.01, self.read_serial)
 
+    def is_rtcm(self, buf: bytearray) -> bool:
+        # RTCM3 preamble
+        return len(buf) >= 2 and buf[0] == 0xD3
+    
+    def parse_rtcm(self, data: bytes):
+        msg = UInt8MultiArray()
+        msg.data = list(data)
+        self.rtcm_pub.publish(msg)
+        self.get_logger().debug(f'Published RTCM3 message ({len(data)} bytes)')
     def read_serial(self):
         try:
             if self.ser.in_waiting > 0:
@@ -35,6 +47,19 @@ class GPSNode(Node):
                         self.buffer = self.buffer[newline_idx + 1:]
                         continue
                     break
+
+                elif len(self.buffer) >= 3 and self.is_rtcm(self.buffer):
+                    msg_len = ((self.buffer[1] & 0x03) << 8) | self.buffer[2]
+                    total_len = 3 + msg_len + 3
+
+                    if len(self.buffer) >= total_len:
+                        msg = bytes(self.buffer[:total_len])
+                        self.parse_rtcm(msg)
+                        self.buffer = self.buffer[total_len:]
+                        continue
+                    break
+
+
                 else:
                     # Discard unknown byte
                     self.buffer = self.buffer[1:]
@@ -89,14 +114,6 @@ class GPSNode(Node):
             except (ValueError, IndexError):
                 self.get_logger().warn(f"Failed to parse NMEA line: {line}")
 
-    def rtcm_callback(self, msg: UInt8MultiArray):
-        """Write incoming RTCM bytes to GPS"""
-        try:
-            data = bytes(msg.data)
-            self.ser.write(data)
-            self.get_logger().debug(f"Wrote {len(data)} RTCM bytes to GPS")
-        except serial.SerialException as e:
-            self.get_logger().error(f"Failed to write RTCM data: {e}")
 
 def main(args=None):
     rclpy.init(args=args)

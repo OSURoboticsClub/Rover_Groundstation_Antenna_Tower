@@ -3,9 +3,8 @@
 # Imports
 #####################################
 # Python native imports
-import multiprocessing.spawn
-import threading
 import multiprocessing
+from multiprocessing.connection import Connection
 import time
 from typing import Callable
 import adafruit_bno08x.i2c
@@ -36,13 +35,12 @@ IMU_IO_TIMEOUT_SEC = 1.0
 #Runs function with timeout. Throws TimeoutError if timeout exceeded
 def run_with_timeout(func: Callable, timeoutSec: float):
 
-    result = None
+    parent_conn, child_conn = multiprocessing.Pipe()
 
-    def get_result():
-        global result 
-        result = func()
+    def get_result(conn: Connection):
+        conn.send(func())
 
-    runner = multiprocessing.Process(target=get_result)
+    runner = multiprocessing.Process(target=get_result, args=[child_conn])
     timer  = multiprocessing.Process(target=time.sleep, args=[timeoutSec])
 
     runner.start()
@@ -54,7 +52,7 @@ def run_with_timeout(func: Callable, timeoutSec: float):
     if (runner.is_alive()):
         raise TimeoutError(f"Timeout Exceeded Running: {func}")
     
-    return result
+    return parent_conn.recv()
     
 
     

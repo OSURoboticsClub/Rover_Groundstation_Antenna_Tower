@@ -3,7 +3,9 @@
 # Imports
 #####################################
 # Python native imports
+import multiprocessing.spawn
 import threading
+import multiprocessing
 import time
 from typing import Callable
 import adafruit_bno08x.i2c
@@ -37,10 +39,11 @@ def run_with_timeout(func: Callable, timeoutSec: float):
     result = None
 
     def get_result():
+        global result 
         result = func()
 
-    runner = threading.Thread(target=get_result)
-    timer  = threading.Thread(target=time.sleep, args=[timeoutSec])
+    runner = multiprocessing.Process(target=get_result)
+    timer  = multiprocessing.Process(target=time.sleep, args=[timeoutSec])
 
     runner.start()
     timer.start()

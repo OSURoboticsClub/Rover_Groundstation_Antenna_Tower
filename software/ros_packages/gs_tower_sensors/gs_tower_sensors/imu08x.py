@@ -6,6 +6,7 @@
 import multiprocessing
 from multiprocessing.connection import Connection
 import time
+from scipy.spatial.transform import Rotation
 from typing import Callable
 import adafruit_bno08x.i2c
 import board
@@ -202,7 +203,9 @@ class IMUNode(Node):
             quat = run_with_timeout(self.get_quaternion, IMU_IO_TIMEOUT_SEC)
             hdg = None
             if quat is not None:
-                hdg = angle(planeProj(Vec3(quat[0], quat[1], quat[2]), Vec3(0, 0, 1)), Vec3(1, 0, 0), Vec3(0, 0, 1))
+                rot = Rotation.from_quat(quat)
+                euler = rot.as_euler('xyz', True)
+                hdg = euler[2]
             if hdg is not None:
                 # Get heading and apply magnetic declination
                 

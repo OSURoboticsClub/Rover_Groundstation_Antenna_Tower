@@ -125,7 +125,8 @@ class IMUNode(Node):
             imu_msg.header.frame_id = "imu_link"
             
             # Orientation (quaternion from BNO055 sensor fusion)
-            quat = run_with_timeout(self.get_quaternion, IMU_IO_TIMEOUT_SEC)
+            #quat = run_with_timeout(self.get_quaternion, IMU_IO_TIMEOUT_SEC)
+            quat = self.get_quaternion()
             if quat and None not in quat:
                 imu_msg.orientation.x = float(quat[0])
                 imu_msg.orientation.y = float(quat[1])
@@ -141,7 +142,8 @@ class IMUNode(Node):
                 imu_msg.orientation_covariance[0] = -1
             
             # Angular velocity (gyroscope) in rad/s
-            gyro = run_with_timeout(self.get_gyro, IMU_IO_TIMEOUT_SEC)
+            #gyro = run_with_timeout(self.get_gyro, IMU_IO_TIMEOUT_SEC)
+            gyro = self.get_gyro()
             if gyro and None not in gyro:
                 imu_msg.angular_velocity.x = float(gyro[0])
                 imu_msg.angular_velocity.y = float(gyro[1])
@@ -155,7 +157,8 @@ class IMUNode(Node):
                 imu_msg.angular_velocity_covariance[0] = -1
             
             # Linear acceleration in m/s²
-            accel = run_with_timeout(self.get_linear_accel, IMU_IO_TIMEOUT_SEC)  # Gravity already removed
+            #accel = run_with_timeout(self.get_linear_accel, IMU_IO_TIMEOUT_SEC)  # Gravity already removed
+            accel = self.get_linear_accel()
             if accel and None not in accel:
                 imu_msg.linear_acceleration.x = float(accel[0])
                 imu_msg.linear_acceleration.y = float(accel[1])
@@ -171,7 +174,8 @@ class IMUNode(Node):
             self.imu_data_publisher.publish(imu_msg)
             
             # === Publish magnetometer data separately ===
-            mag = run_with_timeout(self.get_magnetometer, IMU_IO_TIMEOUT_SEC)
+            #mag = run_with_timeout(self.get_magnetometer, IMU_IO_TIMEOUT_SEC)
+            mag = self.get_magnetometer()
             if mag and None not in mag:
                 mag_msg = MagneticField()
                 mag_msg.header.stamp = current_time

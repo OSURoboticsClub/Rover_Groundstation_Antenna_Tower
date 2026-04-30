@@ -24,7 +24,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            "imu = gs_tower_sensors.imu08x:main"
+            "imu = gs_tower_sensors.imu08x:main",
+            "gps = gs_tower_sensors.GPSNode:main"
         ],
     },
 )

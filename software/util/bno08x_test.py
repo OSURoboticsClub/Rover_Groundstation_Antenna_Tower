@@ -24,7 +24,7 @@ def main():
 			print("Linear Acceleration: " + str(imu.linear_acceleration))
 			print("Angular Accleration: " + str(imu.gyro))
 			print("Magnetometer: " + str(imu.magnetic))
-			time.sleep(0.5)
+			time.sleep(0.1)
 		except Exception as e:
 			print (f"Failed to parse packet! {type(e)}: {e}")
 

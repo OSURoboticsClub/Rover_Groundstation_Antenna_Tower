@@ -12,9 +12,9 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='nolan',
-    maintainer_email='nolan@todo.todo',
-    description='TODO: Package description',
+    maintainer='Nolan Kessler',
+    maintainer_email='kesslnol@oregonstate.edu',
+    description='Provides pan/tilt control for groundstation antenna.',
     license='TODO: License declaration',
     extras_require={
         'test': [

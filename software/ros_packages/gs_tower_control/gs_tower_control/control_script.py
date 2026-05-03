@@ -314,9 +314,6 @@ ELEV_CONVERSION_FACTOR = 1.0
 PAN_ANGLE_RANGE  = AxisRange(-170, 170)
 ELEV_ANGLE_RANGE = AxisRange( -30,  30)
 
-#timer intervals
-STATUS_PUBLISHER_INTERVAL_SEC = 0.25
-
 #timeouts
 ROVER_GPS_ALLOWED_TIMEOUT = 3.5
 ROVER_IMU_ALLOWED_TIMEOUT = 1.0
@@ -342,6 +339,9 @@ PAN_AXIS_POSITION_TOLERANCE_DEG  = 1.0
 #homing motor spin up time
 HOMING_START_TIME_SEC = 0.5
 
+#control freq Hz
+CONTROL_FREQ = 2.0
+
 class AntennaTowerControlNode(rclpy.node.Node):
 
     class AntennaControlMode(Enum):
@@ -365,6 +365,8 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
     rover_heading_corrected: TemporalValue[Float32]
     tower_heading_corrected: TemporalValue[Float32]
+
+    manualControlInput: typing.Optional[AntennaControlManualInput]
 
     elev_axis: OdriveAxis
     pan_axis: OdriveAxis
@@ -403,18 +405,18 @@ class AntennaTowerControlNode(rclpy.node.Node):
         if (request.mode == self.AntennaControlMode.DISABLED.value):
             result =  self.elev_axis.disable_axis()
             result &= self.pan_axis.disable_axis()
-            if (not result):
-                response.success = False
-                return
+            #if (not result):
+            #    response.success = False
+            #    return response
             response.success = True
             self.controlMode = self.AntennaControlMode.DISABLED
 
         elif (request.mode == self.AntennaControlMode.MANUAL_CONTROL.value):
             result =  self.elev_axis.enable_axis()
             result &= self.pan_axis.enable_axis()
-            if (not result):
-                response.success = False
-                return
+            #if (not result):
+            #    response.success = False
+            #    return response
             response.success = True
             self.controlMode = self.AntennaControlMode.MANUAL_CONTROL
 
@@ -427,9 +429,9 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
             result =  self.elev_axis.enable_axis()
             result &= self.pan_axis.enable_axis()
-            if (not result):
-                response.success = False
-                return
+            #if (not result):
+            #    response.success = False
+            #    return response
             response.success = True
             self.controlMode = self.AntennaControlMode.AUTOMATIC_CONTROL
             response.success = True
@@ -450,8 +452,6 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
     def rover_gps_callback(self, fix: NavSatFix):
         self.rover_gps.update(fix)
-        if (self.controlMode == self.AntennaControlMode.AUTOMATIC_CONTROL):
-            self.execute_automatic_control()
 
 
     def tower_gps_callback(self, fix: NavSatFix):
@@ -459,7 +459,7 @@ class AntennaTowerControlNode(rclpy.node.Node):
         self.heading_offset = getMagneticNorthOffsetDegrees(LatLong(EARTH_RADIUS_M + fix.altitude, fix.latitude, fix.longitude))
 
 
-    def control_status_publisher_callback(self):
+    def publish_control_status(self):
 
         msg = AntennaControlStatus()
 
@@ -488,39 +488,45 @@ class AntennaTowerControlNode(rclpy.node.Node):
             return
             
         #TODO update to use imu orientations
-        rawLoc = self.rover_gps.get_value()
-        roverBaseLoc = LatLong(
-            EARTH_RADIUS_M + rawLoc.altitude,
-            rawLoc.latitude,
-            rawLoc.longitude
-        )
-        roverAntennaOffset = quat_to_LatLong(self.rover_imu.get_value().orientation) * ROVER_HEIGHT_METERS
-        self.get_logger().info(f"Rover Ant. Offset {roverAntennaOffset}")
-        roverLoc = roverBaseLoc + roverAntennaOffset
+        try:
+            rawLoc = self.rover_gps.get_value()
+            roverBaseLoc = LatLong(
+                EARTH_RADIUS_M + rawLoc.altitude,
+                rawLoc.latitude,
+                rawLoc.longitude
+            )
+            roverAntennaOffset = quat_to_LatLong(self.rover_imu.get_value().orientation) * ROVER_HEIGHT_METERS
+            self.get_logger().info(f"Rover Ant. Offset {roverAntennaOffset}")
+            roverLoc = roverBaseLoc + roverAntennaOffset
 
 
-        rawLoc = self.tower_gps.get_value()
-        towerBaseLoc = LatLong(
-            EARTH_RADIUS_M + rawLoc.altitude,
-            rawLoc.latitude,
-            rawLoc.longitude
-        )
-        towerAntennaOffset = quat_to_LatLong(self.tower_imu.get_value().orientation) * TOWER_HEIGHT_METERS
-        self.get_logger().info(f"Tower Ant. Offset {towerAntennaOffset}")
-        towerLoc = towerBaseLoc + towerAntennaOffset
+            rawLoc = self.tower_gps.get_value()
+            towerBaseLoc = LatLong(
+                EARTH_RADIUS_M + rawLoc.altitude,
+                rawLoc.latitude,
+                rawLoc.longitude
+            )
+            towerAntennaOffset = quat_to_LatLong(self.tower_imu.get_value().orientation) * TOWER_HEIGHT_METERS
+            self.get_logger().info(f"Tower Ant. Offset {towerAntennaOffset}")
+            towerLoc = towerBaseLoc + towerAntennaOffset
 
-        self.get_logger().info(f"Computed new angles: \n Pan: {getPanAngleDegrees(towerLoc, roverLoc)} \n Tilt: {getElevationAngleDegrees(towerLoc, roverLoc)}")
-        self.get_logger().info(f"Computed magnetic declination: {self.heading_offset}")
+            self.get_logger().info(f"Computed new angles: \n Pan: {getPanAngleDegrees(towerLoc, roverLoc)} \n Tilt: {getElevationAngleDegrees(towerLoc, roverLoc)}")
+            self.get_logger().info(f"Computed magnetic declination: {self.heading_offset}")
 
-        self.pan_axis.set_position(getPanAngleDegrees(towerLoc, roverLoc) - self.heading_offset)
-        self.elev_axis.set_position(getElevationAngleDegrees(towerLoc, roverLoc))
+            self.pan_axis.set_position(getPanAngleDegrees(towerLoc, roverLoc) - self.heading_offset)
+            self.elev_axis.set_position(getElevationAngleDegrees(towerLoc, roverLoc))
+        except Exception as e:
+            self.get_logger().warn(f"Failed to compute new angles due to exception: {e}")
 
 
-    def execute_manual_control(self, data: AntennaControlManualInput):
+    def manual_control_input_callback(self, data: AntennaControlManualInput):
+        self.manualControlInput = data
 
-        if self.controlMode == self.AntennaControlMode.MANUAL_CONTROL:
-            self.elev_axis.set_position(data.elevation_deg)
-            self.pan_axis.set_position(data.pan_deg)
+
+    def execute_manual_control(self):
+        if self.manualControlInput is not None:
+            self.elev_axis.set_position(self.manualControlInput.elevation_deg)
+            self.pan_axis.set_position(self.manualControlInput.pan_deg)
 
 
     def execute_homing(self):
@@ -596,6 +602,19 @@ class AntennaTowerControlNode(rclpy.node.Node):
         result.data = hdg.data + self.heading_offset
         return result
 
+    
+    def control_loop(self):
+        #execute control depending on state
+        if self.controlMode == self.AntennaControlMode.MANUAL_CONTROL:
+            self.execute_manual_control()
+        elif self.controlMode == self.AntennaControlMode.AUTOMATIC_CONTROL:
+            self.execute_automatic_control()
+        elif self.controlMode == self.AntennaControlMode.HOMING:
+            self.execute_homing()
+        
+        self.publish_control_status()
+
+    
     def __init__(self):
         super().__init__(node_name="gs_tower")
 
@@ -611,6 +630,8 @@ class AntennaTowerControlNode(rclpy.node.Node):
         self.heading_offset = 0
 
         self.homing_running = TemporalValue[bool](False, maxTimeoutSec=0.5)
+
+        self.manualControlInput = None
 
 
         #rover and tower gps subscriptions
@@ -660,7 +681,7 @@ class AntennaTowerControlNode(rclpy.node.Node):
         self.manualControlSubscriber = self.create_subscription(
             AntennaControlManualInput,
             MANUAL_CONTROL_TOPIC,
-            self.execute_manual_control,
+            self.manual_control_input_callback,
             10
         )
 
@@ -671,10 +692,10 @@ class AntennaTowerControlNode(rclpy.node.Node):
             self.control_service_callback
         )
 
-        #status publishing timer
+        #main loop timer
         self.create_timer(
-            STATUS_PUBLISHER_INTERVAL_SEC,
-            self.control_status_publisher_callback
+            1 / CONTROL_FREQ,
+            self.control_loop
         )
 
         #status publisher

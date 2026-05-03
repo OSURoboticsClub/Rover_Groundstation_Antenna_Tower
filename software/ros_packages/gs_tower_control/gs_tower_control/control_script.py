@@ -2,7 +2,6 @@ from copy import deepcopy
 
 from faulthandler import is_enabled
 import math
-from re import S
 import time
 import typing
 from enum import Enum
@@ -190,14 +189,14 @@ class OdriveAxis:
 
     def get_velocity_deg_sec(self) -> typing.Optional[float]:
         if self._status.get_value() is None or self._status.max_timeout_exceeded():
-            self._node.get_logger().warn(f"Axis {self._name} status is stale or not yet received, cannot get velocity")
+            #self._node.get_logger().warn(f"Axis {self._name} status is stale or not yet received, cannot get velocity")
             return None
         return self._status.get_value().vel_estimate * self._conversionFactor / 60 # type: ignore
 
 
     def get_position_deg(self) -> typing.Optional[float]:
         if self._status.get_value() is None or self._status.max_timeout_exceeded():
-            self._node.get_logger().warn(f"Axis {self._name} status is stale or not yet received, cannot get position")
+            #self._node.get_logger().warn(f"Axis {self._name} status is stale or not yet received, cannot get position")
             return None
         return self._status.get_value().pos_estimate * self._conversionFactor + self._pos_offset # type: ignore
     
@@ -231,7 +230,7 @@ class OdriveAxis:
         msg = ControlMessage()
         msg.control_mode = ControlMode.POSITION_CONTROL
         msg.input_mode = InputMode.PASSTHROUGH
-        msg.input_pos = pos / self._conversionFactor - self._pos_offset #convert from revolutions to degrees
+        msg.input_pos = (pos - self._pos_offset) / self._conversionFactor #convert from degrees to revolutions
         self._controlPublisher.publish(msg)
 
 
@@ -288,13 +287,13 @@ def none_to_float_zero(input):
 # ---------- CONSTANTS ------------
 
 #sensor topic names
-TOWER_IMU_TOPIC     = "gs_tower_imu/data"
-TOWER_HEADING_TOPIC = "gs_tower_imu/heading"
-TOWER_GPS_TOPIC     = "gs_tower_gps/fix"
+TOWER_IMU_TOPIC     = "/gs_tower_imu/data"
+TOWER_HEADING_TOPIC = "/gs_tower_imu/heading"
+TOWER_GPS_TOPIC     = "/gs_tower_gps/fix"
 
-ROVER_IMU_TOPIC     = "imu/data"
-ROVER_HEADING_TOPIC = "imu/heading"
-ROVER_GPS_TOPIC     = "gps/fix"
+ROVER_IMU_TOPIC     = "/imu/data"
+ROVER_HEADING_TOPIC = "/imu/heading"
+ROVER_GPS_TOPIC     = "/gps/fix"
 
 #axis names
 ELEV_AXIS_NAME = "elev_axis"
@@ -306,7 +305,7 @@ CONTROL_STATUS_TOPIC = "/gs_tower_control/status"
 
 
 #factor to convert motor rotations to degrees for each axis
-PAN_CONVERSION_FACTOR  = 72/43 * 360
+PAN_CONVERSION_FACTOR  = 43/72 * 360
 ELEV_CONVERSION_FACTOR = 1.0
 
 #allowed angle ranges for each axis (deg)
@@ -533,6 +532,7 @@ class AntennaTowerControlNode(rclpy.node.Node):
         self.pan_axis.reset_pos(0)
         self.elev_axis.reset_pos(0)
         self.get_logger().info("Positions reset")
+        self.controlMode = self.AntennaControlMode.DISABLED
         """
         #quit if the controller is changing state
         if (self.elev_axis.is_changing_state() or self.pan_axis.is_changing_state()):

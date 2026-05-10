@@ -1,0 +1,65 @@
+[INFO] [launch]: All log files can be found below /home/makemorerobot/.ros/log/2026-05-09-18-45-23-419312-gs-tower-2333
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [odrive_can_node-1]: process started with pid [2335]
+[INFO] [odrive_can_node-2]: process started with pid [2337]
+[INFO] [antenna_control-3]: process started with pid [2339]
+[odrive_can_node-2] [INFO] [1778377524.318825971] [elev_axis.elev_node]: node_id: 2
+[odrive_can_node-2] [INFO] [1778377524.319241379] [elev_axis.elev_node]: interface: can0
+[odrive_can_node-1] [INFO] [1778377524.321563731] [pan_axis.pan_node]: node_id: 1
+[odrive_can_node-1] [INFO] [1778377524.322013675] [pan_axis.pan_node]: interface: can0
+[odrive_can_node-2] [INFO] [1778377526.906476877] [elev_axis.elev_node]: requesting axis state: 1
+[antenna_control-3] [WARN] [1778377527.151691988] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get position
+[antenna_control-3] [WARN] [1778377527.155142007] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get velocity
+[antenna_control-3] [WARN] [1778377527.160888970] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get position
+[antenna_control-3] [WARN] [1778377527.163867859] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get velocity
+[antenna_control-3] [WARN] [1778377527.183540673] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get position
+[antenna_control-3] [WARN] [1778377527.188065173] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get velocity
+[antenna_control-3] [WARN] [1778377527.287221414] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get position
+[antenna_control-3] [WARN] [1778377527.292134988] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get velocity
+[antenna_control-3] [WARN] [1778377527.386553896] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get position
+[antenna_control-3] [WARN] [1778377527.391994081] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get velocity
+[antenna_control-3] [WARN] [1778377527.486643044] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get position
+[antenna_control-3] [WARN] [1778377527.491542729] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get velocity
+[antenna_control-3] [WARN] [1778377527.586762229] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get position
+[antenna_control-3] [WARN] [1778377527.591178970] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get velocity
+[antenna_control-3] [WARN] [1778377527.687106173] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get position
+[antenna_control-3] [WARN] [1778377527.692197303] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get velocity
+[antenna_control-3] [WARN] [1778377527.786722506] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get position
+[antenna_control-3] [WARN] [1778377527.792190451] [gs_tower_control.antenna_control_node]: Axis pan_axis status is stale or not yet received, cannot get velocity
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[odrive_can_node-1] [INFO] [1778377539.559584499] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[odrive_can_node-2] [INFO] [1778377539.560185851] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[odrive_can_node-1] terminate called without an active exception
+[odrive_can_node-2] terminate called without an active exception
+[antenna_control-3] Traceback (most recent call last):
+[antenna_control-3]   File "/home/makemorerobot/source/Rover_Groundstation_Antenna_Tower/software/install/gs_tower_control/lib/python3.10/site-packages/gs_tower_control/control_script.py", line 904, in main
+[antenna_control-3]     rclpy.spin(
+[antenna_control-3]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 229, in spin
+[antenna_control-3]     executor.spin_once()
+[antenna_control-3]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 808, in spin_once
+[antenna_control-3]     self._spin_once_impl(timeout_sec)
+[antenna_control-3]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 797, in _spin_once_impl
+[antenna_control-3]     handler, entity, node = self.wait_for_ready_callbacks(timeout_sec=timeout_sec)
+[antenna_control-3]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[antenna_control-3]     return next(self._cb_iter)
+[antenna_control-3]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 677, in _wait_for_ready_callbacks
+[antenna_control-3]     wait_set.wait(timeout_nsec)
+[antenna_control-3] KeyboardInterrupt
+[antenna_control-3] 
+[antenna_control-3] During handling of the above exception, another exception occurred:
+[antenna_control-3] 
+[antenna_control-3] Traceback (most recent call last):
+[antenna_control-3]   File "/home/makemorerobot/source/Rover_Groundstation_Antenna_Tower/software/install/gs_tower_control/lib/gs_tower_control/antenna_control", line 33, in <module>
+[antenna_control-3]     sys.exit(load_entry_point('gs-tower-control==0.0.0', 'console_scripts', 'antenna_control')())
+[antenna_control-3]   File "/home/makemorerobot/source/Rover_Groundstation_Antenna_Tower/software/install/gs_tower_control/lib/python3.10/site-packages/gs_tower_control/control_script.py", line 909, in main
+[antenna_control-3]     rclpy.shutdown()
+[antenna_control-3]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[antenna_control-3]     _shutdown(context=context)
+[antenna_control-3]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[antenna_control-3]     return context.shutdown()
+[antenna_control-3]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[antenna_control-3]     self.__context.shutdown()
+[antenna_control-3] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[ERROR] [antenna_control-3]: process has died [pid 2339, exit code 1, cmd '/home/makemorerobot/source/Rover_Groundstation_Antenna_Tower/software/install/gs_tower_control/lib/gs_tower_control/antenna_control --ros-args -r __node:=antenna_control_node -r __ns:=/gs_tower_control'].
+[ERROR] [odrive_can_node-2]: process has died [pid 2337, exit code -6, cmd '/home/makemorerobot/source/Rover_Groundstation_Antenna_Tower/software/install/odrive_can/lib/odrive_can/odrive_can_node --ros-args -r __node:=elev_node -r __ns:=/elev_axis --params-file /tmp/launch_params_86k_02in --params-file /tmp/launch_params_tusejs91'].
+[ERROR] [odrive_can_node-1]: process has died [pid 2335, exit code -6, cmd '/home/makemorerobot/source/Rover_Groundstation_Antenna_Tower/software/install/odrive_can/lib/odrive_can/odrive_can_node --ros-args -r __node:=pan_node -r __ns:=/pan_axis --params-file /tmp/launch_params_3opum6er --params-file /tmp/launch_params_w873p6pd'].

@@ -616,6 +616,7 @@ class AntennaTowerControlNode(rclpy.node.Node):
                 rawLoc.latitude,
                 rawLoc.longitude
             )
+            self.get_logger.info(f"Rover Location: {roverLoc}")
 
             #rawLoc = self.rover_gps.get_value()
             #roverBaseLoc = LatLong(
@@ -641,6 +642,7 @@ class AntennaTowerControlNode(rclpy.node.Node):
                 rawLoc.latitude,
                 rawLoc.longitude
             )
+            self.get_logger.info(f"Tower Location: {towerLoc}")
 
             #towerBaseLoc = LatLong(
             #    EARTH_RADIUS_M + rawLoc.altitude,

@@ -306,13 +306,13 @@ CONTROL_STATUS_TOPIC = "/gs_tower_control/status"
 
 
 #factor to convert motor rotations to mechanism rotations for each axis
-PAN_CONVERSION_FACTOR  = 1/34/5
-ELEV_CONVERSION_FACTOR = 1.0
+PAN_CONVERSION_FACTOR  = 1.0/56.63
+ELEV_CONVERSION_FACTOR = 1.0/383.6
 
 #allowed angle ranges for each axis (deg)
 #assumed that limits are a hard stop
 PAN_ANGLE_RANGE  = AxisRange(-170, 170)
-ELEV_ANGLE_RANGE = AxisRange( -30,  30)
+ELEV_ANGLE_RANGE = AxisRange( -10,  10)
 
 #timeouts
 ROVER_GPS_ALLOWED_TIMEOUT = 3.5

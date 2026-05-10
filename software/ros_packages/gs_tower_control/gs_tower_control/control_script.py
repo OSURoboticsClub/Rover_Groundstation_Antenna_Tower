@@ -189,14 +189,14 @@ class OdriveAxis:
 
     def get_velocity_deg_sec(self) -> typing.Optional[float]:
         if self._status.get_value() is None or self._status.max_timeout_exceeded():
-            #self._node.get_logger().warn(f"Axis {self._name} status is stale or not yet received, cannot get velocity")
+            self._node.get_logger().warn(f"Axis {self._name} status is stale or not yet received, cannot get velocity")
             return None
         return self._status.get_value().vel_estimate * self._conversionFactor * 360 / 60 # type: ignore
 
 
     def get_position_deg(self) -> typing.Optional[float]:
         if self._status.get_value() is None or self._status.max_timeout_exceeded():
-            #self._node.get_logger().warn(f"Axis {self._name} status is stale or not yet received, cannot get position")
+            self._node.get_logger().warn(f"Axis {self._name} status is stale or not yet received, cannot get position")
             return None
         return (self._status.get_value().pos_estimate * self._conversionFactor * 360) + self._pos_offset # type: ignore
     
@@ -524,7 +524,7 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
             self.get_logger().info(f"Computed new angles: \n Pan: {getPanAngleDegrees(towerLoc, roverLoc)} \n Tilt: {getElevationAngleDegrees(towerLoc, roverLoc)}")
 
-            self.pan_axis.set_position(getPanAngleDegrees(towerLoc, roverLoc) - self.tower_heading.get_value())
+            self.pan_axis.set_position(getPanAngleDegrees(towerLoc, roverLoc) - self.tower_heading.get_value().data)
             self.elev_axis.set_position(getElevationAngleDegrees(towerLoc, roverLoc))
         except Exception as e:
             self.get_logger().warn(f"Failed to compute new angles due to exception: {e}")

@@ -306,7 +306,7 @@ CONTROL_STATUS_TOPIC = "/gs_tower_control/status"
 
 
 #factor to convert motor rotations to mechanism rotations for each axis
-PAN_CONVERSION_FACTOR  = 1/2
+PAN_CONVERSION_FACTOR  = 1/34/5
 ELEV_CONVERSION_FACTOR = 1.0
 
 #allowed angle ranges for each axis (deg)
@@ -524,7 +524,7 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
             self.get_logger().info(f"Computed new angles: \n Pan: {getPanAngleDegrees(towerLoc, roverLoc)} \n Tilt: {getElevationAngleDegrees(towerLoc, roverLoc)}")
 
-            self.pan_axis.set_position(getPanAngleDegrees(towerLoc, roverLoc))
+            self.pan_axis.set_position(getPanAngleDegrees(towerLoc, roverLoc) - self.tower_heading.get_value())
             self.elev_axis.set_position(getElevationAngleDegrees(towerLoc, roverLoc))
         except Exception as e:
             self.get_logger().warn(f"Failed to compute new angles due to exception: {e}")

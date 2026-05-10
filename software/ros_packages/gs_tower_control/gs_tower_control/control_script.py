@@ -341,14 +341,15 @@ CONTROL_SERVICE = "/gs_tower_control/service"
 
 #factor to convert motor rotations to mechanism rotations for each axis
 PAN_CONVERSION_FACTOR  = 1.0/81.0
-ELEV_CONVERSION_FACTOR = 1.0/392.0
+#ELEV_CONVERSION_FACTOR = 1.0/392.0
+ELEV_CONVERSION_FACTOR = 1.0/540.0
 #PAN_CONVERSION_FACTOR = 1.0/100
 #ELEV_CONVERSION_FACTOR = 1.0/100
 
 #allowed angle ranges for each axis (deg)
 #assumed that limits are a hard stop
 PAN_ANGLE_RANGE  = AxisRange(-145, 145)
-ELEV_ANGLE_RANGE = AxisRange(-26,  25)
+ELEV_ANGLE_RANGE = AxisRange(-24,  25)
 
 #timeouts
 ROVER_GPS_ALLOWED_TIMEOUT = 3.5
@@ -372,13 +373,13 @@ PAN_AXIS_POSITION_TOLERANCE_DEG  = 1.0
 
 #homing motor spin up time
 HOMING_AVG_WINDOW_SIZE = 5
-HOMING_START_TIME_SEC = 1.5
-ELEV_HOMING_VELOCITY = 3 #deg/s
+HOMING_START_TIME_SEC = 1
+ELEV_HOMING_VELOCITY = 5 #deg/s
 ELEV_HOMING_VELOCITY_THRESHOLD = 0.5 #homing is done when velocity is below THRESHOLD * VEL
 ELEV_HOMING_STOP_POS = 27.5
 PAN_HOMING_STOP_POS = 180.0
-PAN_HOMING_VELOCITY = 10 #deg/s
-PAN_HOMING_VELOCITY_THRESHOLD = 0.7
+PAN_HOMING_VELOCITY = 15 #deg/s
+PAN_HOMING_VELOCITY_THRESHOLD = 0.5
 
 #control freq Hz
 CONTROL_FREQ = 10.0

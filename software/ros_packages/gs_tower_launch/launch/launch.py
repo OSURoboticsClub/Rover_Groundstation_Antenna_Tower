@@ -4,12 +4,12 @@ from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription
-from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.launch_description_sources import PythonLaunchDescriptionSource, AnyLaunchDescriptionSource
 
 def generate_launch_description():
 
-    sim_odrive = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
+    odrive = IncludeLaunchDescription(
+        AnyLaunchDescriptionSource(
             [os.path.join(get_package_share_directory('odrive_can'), 'launch'), '/launch.yaml']
         )
     )
@@ -21,6 +21,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        sim_odrive,
+        odrive,
         antenna_control
     ])
+

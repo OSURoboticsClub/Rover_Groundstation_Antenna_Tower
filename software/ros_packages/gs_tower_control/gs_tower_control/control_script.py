@@ -180,16 +180,16 @@ class OdriveAxis:
 
     def enable_axis(self) -> bool:
         if (self._stateFuture is not None) and (not self._stateFuture.done()):
-            self._node.get_logger().warn(f"State change already in progress for axis {self._name}, cannot enable")
-            return False
+            self._node.get_logger().warn(f"State change already in progress for axis {self._name}")
+            #return False
         self._stateFuture = self._set_state(AxisState.CLOSED_LOOP_CONTROL)
         return True
 
 
     def disable_axis(self) -> bool:
         if (self._stateFuture is not None) and (not self._stateFuture.done()):
-            self._node.get_logger().warn(f"State change already in progress for axis {self._name}, cannot disable")
-            return False
+            self._node.get_logger().warn(f"State change already in progress for axis {self._name}")
+            #return False
         self._stateFuture = self._set_state(AxisState.IDLE)
         self._currSetpoint = math.nan
         return True
@@ -327,7 +327,7 @@ CONTROL_SERVICE = "/gs_tower_control/service"
 
 
 #factor to convert motor rotations to mechanism rotations for each axis
-PAN_CONVERSION_FACTOR  = 1.0/57.87
+PAN_CONVERSION_FACTOR  = 1.0/81.0
 ELEV_CONVERSION_FACTOR = 1.0/392.0
 #PAN_CONVERSION_FACTOR = 1.0/100
 #ELEV_CONVERSION_FACTOR = 1.0/100
@@ -358,13 +358,13 @@ ELEV_AXIS_POSITION_TOLERANCE_DEG = 1.0
 PAN_AXIS_POSITION_TOLERANCE_DEG  = 1.0
 
 #homing motor spin up time
-HOMING_START_TIME_SEC = 3
-ELEV_HOMING_VELOCITY = 2.5 #deg/s
-ELEV_HOMING_VELOCITY_THRESHOLD = 0.9 #homing is done when velocity is below THRESHOLD * VEL
+HOMING_START_TIME_SEC = 1.5
+ELEV_HOMING_VELOCITY = 12 #deg/s
+ELEV_HOMING_VELOCITY_THRESHOLD = 0.1 #homing is done when velocity is below THRESHOLD * VEL
 ELEV_HOMING_STOP_POS = 27.5
 PAN_HOMING_STOP_POS = 180.0
-PAN_HOMING_VELOCITY = 1 #deg/s
-PAN_HOMING_VELOCITY_THRESHOLD = 0.8
+PAN_HOMING_VELOCITY = 0.5 #deg/s
+PAN_HOMING_VELOCITY_THRESHOLD = 0.7
 
 #control freq Hz
 CONTROL_FREQ = 10.0

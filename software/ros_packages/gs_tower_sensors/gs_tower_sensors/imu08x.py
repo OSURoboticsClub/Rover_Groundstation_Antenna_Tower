@@ -71,6 +71,7 @@ class IMUNode(Node):
         self.mag_topic = self.declare_parameter("mag_topic", DEFAULT_MAG_TOPIC).value
         self.imu_heading_topic = self.declare_parameter("imu_heading_topic", IMU_HEADING_TOPIC).value
         self.wait_time = 1.0 / self.declare_parameter('hertz', DEFAULT_HERTZ).value
+        self.magnetic_declination = self.declare_parameter('magnetic_declination', 0.0).value
 
         # Publishers
         self.imu_data_publisher = self.create_publisher(Imu, self.imu_data_topic, 10)
@@ -210,7 +211,7 @@ class IMUNode(Node):
                 # Get heading and apply magnetic declination
                 
                 heading_msg = Float32()
-                heading_msg.data = float(hdg)
+                heading_msg.data = float(hdg) - self.magnetic_declination
                 self.imu_heading_publisher.publish(heading_msg)
                 
         except Exception as e:

@@ -119,7 +119,7 @@ class OdriveAxis:
     _name: str #name of the axis
     _node: rclpy.node.Node # ROS node to use for publishers and subscribers
     _range: typing.Optional[AxisRange] #optional position range restriction (only enforced in position control mode)
-    _conversionFactor: float #factor to convert from motor revolutions to degrees for this axis
+    _conversionFactor: float #factor to convert motor rotations to mechanism rotations for each axis
     _status: TemporalValue[ControllerStatus] #current status of the axis controller
     _controlPublisher: rclpy.publisher.Publisher #publisher for sending control messages to the axis
     _stateClient: rclpy.client.Client #service client for setting the axis state
@@ -191,14 +191,14 @@ class OdriveAxis:
         if self._status.get_value() is None or self._status.max_timeout_exceeded():
             #self._node.get_logger().warn(f"Axis {self._name} status is stale or not yet received, cannot get velocity")
             return None
-        return self._status.get_value().vel_estimate * self._conversionFactor / 60 # type: ignore
+        return self._status.get_value().vel_estimate * self._conversionFactor * 360 / 60 # type: ignore
 
 
     def get_position_deg(self) -> typing.Optional[float]:
         if self._status.get_value() is None or self._status.max_timeout_exceeded():
             #self._node.get_logger().warn(f"Axis {self._name} status is stale or not yet received, cannot get position")
             return None
-        return self._status.get_value().pos_estimate * self._conversionFactor + self._pos_offset # type: ignore
+        return (self._status.get_value().pos_estimate * self._conversionFactor * 360) + self._pos_offset # type: ignore
     
 
     def is_changing_state(self) -> bool:
@@ -230,7 +230,7 @@ class OdriveAxis:
         msg = ControlMessage()
         msg.control_mode = ControlMode.POSITION_CONTROL
         msg.input_mode = InputMode.PASSTHROUGH
-        msg.input_pos = (pos - self._pos_offset) / self._conversionFactor #convert from degrees to revolutions
+        msg.input_pos = (pos - self._pos_offset) / self._conversionFactor / 360 #convert from mechanism degrees to motor revolutions
         self._controlPublisher.publish(msg)
 
 
@@ -243,14 +243,15 @@ class OdriveAxis:
         msg = ControlMessage()
         msg.control_mode = ControlMode.VELOCITY_CONTROL
         msg.input_mode = InputMode.PASSTHROUGH
-        msg.input_vel = vel / self._conversionFactor / 60 #convert from deg/s to motor revolutions/min
+        msg.input_vel = vel / self._conversionFactor / 360 / 60 #convert from mechanism deg/s to motor revolutions/min
         self._controlPublisher.publish(msg)
 
 
     def reset_pos(self, new_pos_deg: float) -> bool:
-        curr_pos_deg = self.get_position_deg()
-        if (curr_pos_deg is None):
+        if self._status.get_value() is None or self._status.max_timeout_exceeded():
             return False
+        
+        curr_pos_deg = (self._status.get_value().pos_estimate * self._conversionFactor * 360)
         
         self._pos_offset = new_pos_deg - curr_pos_deg
         self._isCalibrated = True
@@ -304,8 +305,8 @@ MANUAL_CONTROL_TOPIC = "/gs_tower_control/manual_control_input"
 CONTROL_STATUS_TOPIC = "/gs_tower_control/status"
 
 
-#factor to convert motor rotations to degrees for each axis
-PAN_CONVERSION_FACTOR  = 43/72 * 360
+#factor to convert motor rotations to mechanism rotations for each axis
+PAN_CONVERSION_FACTOR  = 1/2
 ELEV_CONVERSION_FACTOR = 1.0
 
 #allowed angle ranges for each axis (deg)
@@ -315,7 +316,7 @@ ELEV_ANGLE_RANGE = AxisRange( -30,  30)
 
 #timeouts
 ROVER_GPS_ALLOWED_TIMEOUT = 3.5
-ROVER_IMU_ALLOWED_TIMEOUT = 1.0
+ROVER_IMU_ALLOWED_TIMEOUT = 3.0
 TOWER_GPS_ALLOWED_TIMEOUT = 15.0
 TOWER_IMU_ALLOWED_TIMEOUT = 15.0
 
@@ -350,7 +351,6 @@ class AntennaTowerControlNode(rclpy.node.Node):
         HOMING = 3
 
     controlMode: AntennaControlMode
-    heading_offset: float
     is_calibrated: bool
 
     manualControlSubscriber: rclpy.subscription.Subscription
@@ -455,7 +455,6 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
     def tower_gps_callback(self, fix: NavSatFix):
         self.tower_gps.update(fix)
-        self.heading_offset = getMagneticNorthOffsetDegrees(LatLong(EARTH_RADIUS_M + fix.altitude, fix.latitude, fix.longitude))
 
 
     def publish_control_status(self):
@@ -494,7 +493,14 @@ class AntennaTowerControlNode(rclpy.node.Node):
                 rawLoc.latitude,
                 rawLoc.longitude
             )
-            roverAntennaOffset = quat_to_LatLong(self.rover_imu.get_value().orientation) * ROVER_HEIGHT_METERS
+            roverAntennaOffset = quat_to_LatLong(
+                    [
+                        self.rover_imu.get_value().orientation.x,
+                        self.rover_imu.get_value().orientation.y,
+                        self.rover_imu.get_value().orientation.z,
+                        self.rover_imu.get_value().orientation.w
+                    ]
+                ) * ROVER_HEIGHT_METERS
             self.get_logger().info(f"Rover Ant. Offset {roverAntennaOffset}")
             roverLoc = roverBaseLoc + roverAntennaOffset
 
@@ -505,14 +511,20 @@ class AntennaTowerControlNode(rclpy.node.Node):
                 rawLoc.latitude,
                 rawLoc.longitude
             )
-            towerAntennaOffset = quat_to_LatLong(self.tower_imu.get_value().orientation) * TOWER_HEIGHT_METERS
+            towerAntennaOffset = quat_to_LatLong(
+                [
+                    self.tower_imu.get_value().orientation.x,
+                    self.tower_imu.get_value().orientation.y,
+                    self.tower_imu.get_value().orientation.z,
+                    self.tower_imu.get_value().orientation.w
+                ]
+            ) * TOWER_HEIGHT_METERS
             self.get_logger().info(f"Tower Ant. Offset {towerAntennaOffset}")
             towerLoc = towerBaseLoc + towerAntennaOffset
 
             self.get_logger().info(f"Computed new angles: \n Pan: {getPanAngleDegrees(towerLoc, roverLoc)} \n Tilt: {getElevationAngleDegrees(towerLoc, roverLoc)}")
-            self.get_logger().info(f"Computed magnetic declination: {self.heading_offset}")
 
-            self.pan_axis.set_position(getPanAngleDegrees(towerLoc, roverLoc) - self.heading_offset)
+            self.pan_axis.set_position(getPanAngleDegrees(towerLoc, roverLoc))
             self.elev_axis.set_position(getElevationAngleDegrees(towerLoc, roverLoc))
         except Exception as e:
             self.get_logger().warn(f"Failed to compute new angles due to exception: {e}")
@@ -531,6 +543,9 @@ class AntennaTowerControlNode(rclpy.node.Node):
     def execute_homing(self):
         self.pan_axis.reset_pos(0)
         self.elev_axis.reset_pos(0)
+        if self.manualControlInput is not None:
+            self.manualControlInput.elevation_deg = 0.0
+            self.manualControlInput.pan_deg = 0.0
         self.get_logger().info("Positions reset")
         self.controlMode = self.AntennaControlMode.DISABLED
         """
@@ -595,13 +610,6 @@ class AntennaTowerControlNode(rclpy.node.Node):
                 self.get_logger().info("Homing completed successfully!")
             """
 
-
-
-    def apply_heading_correction(self, hdg: Float32) -> Float32:
-        result = Float32()
-        result.data = hdg.data + self.heading_offset
-        return result
-
     
     def control_loop(self):
         #execute control depending on state
@@ -624,10 +632,8 @@ class AntennaTowerControlNode(rclpy.node.Node):
         self.rover_imu = TemporalValue[Imu](maxTimeoutSec=ROVER_IMU_ALLOWED_TIMEOUT)
         self.tower_imu = TemporalValue[Imu](maxTimeoutSec=TOWER_IMU_ALLOWED_TIMEOUT)
 
-        self.rover_heading_corrected = TemporalValue[Float32](maxTimeoutSec=ROVER_IMU_ALLOWED_TIMEOUT)
-        self.tower_heading_corrected = TemporalValue[Float32](maxTimeoutSec=TOWER_IMU_ALLOWED_TIMEOUT)
-
-        self.heading_offset = 0
+        self.rover_heading = TemporalValue[Float32](maxTimeoutSec=ROVER_IMU_ALLOWED_TIMEOUT)
+        self.tower_heading = TemporalValue[Float32](maxTimeoutSec=TOWER_IMU_ALLOWED_TIMEOUT)
 
         self.homing_running = TemporalValue[bool](False, maxTimeoutSec=0.5)
 
@@ -667,14 +673,14 @@ class AntennaTowerControlNode(rclpy.node.Node):
         self.create_subscription(
             Float32,
             TOWER_HEADING_TOPIC,
-            lambda h: self.tower_heading_corrected.update(self.apply_heading_correction(h)),
+            self.tower_heading.update,
             10
         )
 
         self.create_subscription(
             Float32,
             ROVER_HEADING_TOPIC,
-            lambda h: self.rover_heading_corrected.update(self.apply_heading_correction(h)),
+            self.rover_heading.update,
             10
         )
 

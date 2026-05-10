@@ -2,6 +2,7 @@
 # Nolan Kessler - 2026
 # kesslnol@oregonstate.edu
 
+from decimal import DivisionByZero
 import math
 import typing
 
@@ -84,8 +85,8 @@ class Vec3:
     def angle(self, v1, v2, n) -> float:
         cross = v2.cross(v1)
         return math.degrees(
-        math.acos(v1.dot(v2) / (v1.mag() * v2.mag()))
-    ) * (-1 if math.isclose((n.norm() + cross.norm()).mag(), 0, abs_tol=0.1) else 1)
+            math.acos(v1.dot(v2) / (v1.mag() * v2.mag()))
+        ) * (-1 if math.isclose((n.norm() + cross.norm()).mag(), 0, abs_tol=0.1) else 1)
 
 
 
@@ -137,40 +138,32 @@ class LatLong(Vec3):
         return super().__str__() + f" [r:{self.r()}, lat:{self.lat()}, long:{self.long()}]"
 
 def getPanAngleDegrees(v1: LatLong, v2: LatLong):
-    #difference vector from v1 to v2
-    vd  = v2 - v1
-    #a vector pointing in the north direction
-    vn  = LatLong(r=v1.r(), lat=v1.lat() + 90, long=v1.long())
-    #the projection of the difference vector onto the ground plane
-    vdg = vd - (v1 * ((vd.dot(v1)) / (v1.mag() ** 2)))
+    try:
+        #difference vector from v1 to v2
+        vd  = v2 - v1
+        #a vector pointing in the north direction
+        vn  = LatLong(r=v1.r(), lat=v1.lat() + 90, long=v1.long())
+        #the projection of the difference vector onto the ground plane
+        vdg = vd - (v1 * ((vd.dot(v1)) / (v1.mag() ** 2)))
 
-    #obtain the cross product
-    cross = vdg.cross(vn)
+        #obtain the cross product
+        cross = vdg.cross(vn)
 
-    #This assumes angle is clockwise positive (when viewed from above earth's surface), with zero being true north
-    return math.degrees(
-        math.acos(vdg.dot(vn) / (vdg.r() * vn.r()))
-    ) * (-1 if math.isclose((v1.norm() + cross.norm()).mag(), 0, abs_tol=0.1) else 1)
+        #This assumes angle is clockwise positive (when viewed from above earth's surface), with zero being true north
+        return math.degrees(
+            math.acos(vdg.dot(vn) / (vdg.r() * vn.r()))
+        ) * (-1 if math.isclose((v1.norm() + cross.norm()).mag(), 0, abs_tol=0.1) else 1)
+    except DivisionByZero:
+        return 0.0
 
 def getElevationAngleDegrees(v1: LatLong, v2: LatLong):
-    vd = v2 - v1
-    return -math.degrees(math.acos(
-        vd.dot(v1) / (vd.mag() * v1.mag())
-    )) + 90
-
-def getMagneticNorthOffsetDegrees(v1: LatLong) -> float:
-    #location of magnetic north
-    mn = LatLong(EARTH_RADIUS_M, 86.494, 162.876)
-    #vector pointing toward true north
-    vn = LatLong(r=v1.r(), lat=v1.lat() + 90, long=v1.long())
-    vd = mn - v1
-    #the projection of the difference vector onto the ground plane
-    vdg = vd - (v1 * ((vd.dot(v1)) / (v1.mag() ** 2)))
-    #obtain the cross product
-    cross = vdg.cross(vn)
-    return math.degrees(
-        math.acos(vdg.dot(vn) / (vdg.r() * vn.r()))
-    ) * (-1 if math.isclose((v1.norm() + cross.norm()).mag(), 0, abs_tol=0.1) else 1)
+    try:
+        vd = v2 - v1
+        return -math.degrees(math.acos(
+            vd.dot(v1) / (vd.mag() * v1.mag())
+        )) + 90
+    except DivisionByZero:
+        return 0.0
 
 
 

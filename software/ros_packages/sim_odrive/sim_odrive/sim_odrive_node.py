@@ -9,6 +9,16 @@ from odrive_can.srv import AxisState
 from odrive.enums import ControlMode, InputMode
 import odrive.enums
 
+
+def clamp(n: float, max: float, min: float):
+    if n > max:
+        return max
+    elif n < min:
+        return min
+    else:
+        return n
+
+
 class SimOdriveNode(rclpy.node.Node):
 
     AXIS_STATUS_TOPIC  = "{NAME}/controller_status"
@@ -51,12 +61,12 @@ class SimOdriveNode(rclpy.node.Node):
             if self.controlMessage is not None and self.controlMessage.control_mode == ControlMode.VELOCITY_CONTROL.value:
                 self.motorVelocity = self.controlMessage.input_vel
             elif self.controlMessage is not None and self.controlMessage.control_mode == ControlMode.POSITION_CONTROL.value:
-                if math.isclose(self.motorPosition, self.controlMessage.input_pos, abs_tol=0.05):
+                if math.isclose(self.motorPosition, self.controlMessage.input_pos, abs_tol=0.005):
                     self.motorVelocity = 0
                 elif self.motorPosition < self.controlMessage.input_pos:
-                    self.motorVelocity = self.maxVelocity
+                    self.motorVelocity = self.maxVelocity * clamp(abs(self.motorPosition - self.controlMessage.input_pos), 1, 0)
                 else:
-                    self.motorVelocity = -self.maxVelocity
+                    self.motorVelocity = -self.maxVelocity * clamp(abs(self.motorPosition - self.controlMessage.input_pos), 1, 0)
             self.motorPosition += (self.motorVelocity / 60) * deltaTime
 
         self.publish_controller_status()

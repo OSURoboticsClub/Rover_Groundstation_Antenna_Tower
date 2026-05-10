@@ -127,6 +127,7 @@ class OdriveAxis:
     _pos_offset:float
     _enforceCalibration: bool
     _isCalibrated: bool
+    _inversion: int
 
 
     def __init__(
@@ -135,6 +136,7 @@ class OdriveAxis:
             node: rclpy.node.Node,
             conversionFactor: float,
             range: typing.Optional[AxisRange],
+            inverted: bool = False,
             enforceCalibration: bool = False
     ):
         self._name = name
@@ -146,6 +148,7 @@ class OdriveAxis:
         self._pos_offset = 0
         self._enforceCalibration = enforceCalibration
         self._isCalibrated = False
+        self._inversion = -1 * inverted
 
         self._node.create_subscription(
             ControllerStatus,
@@ -191,14 +194,14 @@ class OdriveAxis:
         if self._status.get_value() is None or self._status.max_timeout_exceeded():
             self._node.get_logger().warn(f"Axis {self._name} status is stale or not yet received, cannot get velocity")
             return None
-        return self._status.get_value().vel_estimate * self._conversionFactor * 360 / 60 # type: ignore
+        return self._inversion * (self._status.get_value().vel_estimate * self._conversionFactor * 360 / 60) # type: ignore
 
 
     def get_position_deg(self) -> typing.Optional[float]:
         if self._status.get_value() is None or self._status.max_timeout_exceeded():
             self._node.get_logger().warn(f"Axis {self._name} status is stale or not yet received, cannot get position")
             return None
-        return (self._status.get_value().pos_estimate * self._conversionFactor * 360) + self._pos_offset # type: ignore
+        return self._inversion * ((self._status.get_value().pos_estimate * self._conversionFactor * 360) + self._pos_offset) # type: ignore
     
 
     def is_changing_state(self) -> bool:
@@ -229,8 +232,8 @@ class OdriveAxis:
 
         msg = ControlMessage()
         msg.control_mode = ControlMode.POSITION_CONTROL
-        msg.input_mode = InputMode.PASSTHROUGH
-        msg.input_pos = (pos - self._pos_offset) / self._conversionFactor / 360 #convert from mechanism degrees to motor revolutions
+        msg.input_mode = InputMode.POS_FILTER
+        msg.input_pos = self._inversion * ((pos - self._pos_offset) / self._conversionFactor / 360) #convert from mechanism degrees to motor revolutions
         self._controlPublisher.publish(msg)
 
 
@@ -243,7 +246,7 @@ class OdriveAxis:
         msg = ControlMessage()
         msg.control_mode = ControlMode.VELOCITY_CONTROL
         msg.input_mode = InputMode.PASSTHROUGH
-        msg.input_vel = vel / self._conversionFactor / 360 / 60 #convert from mechanism deg/s to motor revolutions/min
+        msg.input_vel = self._inversion * (vel / self._conversionFactor / 360 / 60) #convert from mechanism deg/s to motor revolutions/min
         self._controlPublisher.publish(msg)
 
 

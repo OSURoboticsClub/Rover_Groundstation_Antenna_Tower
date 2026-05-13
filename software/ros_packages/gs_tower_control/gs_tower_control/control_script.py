@@ -726,7 +726,8 @@ class AntennaTowerControlNode(rclpy.node.Node):
             PAN_AXIS_NAME,
             self,
             PAN_CONVERSION_FACTOR,
-            PAN_ANGLE_RANGE
+            PAN_ANGLE_RANGE,
+            inverted=True
         )
 
         #initialize axes to idle mode and control to disabled

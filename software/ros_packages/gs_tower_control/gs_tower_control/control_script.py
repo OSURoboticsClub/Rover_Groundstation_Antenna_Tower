@@ -1,5 +1,6 @@
 from copy import deepcopy
 
+from curses import flash
 from faulthandler import is_enabled
 import math
 import time
@@ -128,6 +129,7 @@ class OdriveAxis:
     _enforceCalibration: bool
     _isCalibrated: bool
     _inversion: int
+    _currSetpoint: float
 
 
     def __init__(
@@ -149,6 +151,7 @@ class OdriveAxis:
         self._enforceCalibration = enforceCalibration
         self._isCalibrated = False
         self._inversion = -1 * inverted
+        self._currSetpoint = math.nan
 
         self._node.create_subscription(
             ControllerStatus,
@@ -187,6 +190,7 @@ class OdriveAxis:
             self._node.get_logger().warn(f"State change already in progress for axis {self._name}, cannot disable")
             return False
         self._stateFuture = self._set_state(AxisState.IDLE)
+        self._currSetpoint = math.nan
         return True
 
 
@@ -217,7 +221,7 @@ class OdriveAxis:
         else:
             return self._status.get_value().axis_state == AxisState.CLOSED_LOOP_CONTROL
 
-    #please set the axis to idle and reenable before calling if in vecocity control mode. TODO: check for this condition
+    #please set the axis to idle and reenable before calling if in velocity control mode. TODO: check for this condition
     def set_position(self, pos: float):
         if self._status.max_timeout_exceeded():
             self._node.get_logger().warn(f"Axis {self._name} controller status stale, position command ignored.")
@@ -229,6 +233,8 @@ class OdriveAxis:
         
         if self._range is not None:
             pos = self._range.clamp(pos)
+
+        self._currSetpoint = pos
 
         msg = ControlMessage()
         msg.control_mode = ControlMode.POSITION_CONTROL
@@ -242,6 +248,8 @@ class OdriveAxis:
         if self._status.max_timeout_exceeded():
             self._node.get_logger().warn(f"Axis {self._name} controller status stale, velocity command ignored.")
             return
+
+        self._currSetpoint = vel
 
         msg = ControlMessage()
         msg.control_mode = ControlMode.VELOCITY_CONTROL
@@ -276,7 +284,12 @@ class OdriveAxis:
         
     def is_calibrated(self) -> bool:
         return self.is_calibrated()
-
+    
+    def calibration_enforced(self) -> bool:
+        return self._enforceCalibration
+    
+    def get_setpoint(self) -> float:
+        return self._currSetpoint
 
 
 # --------- HELPER FUNCTIONS ----------
@@ -352,6 +365,17 @@ class AntennaTowerControlNode(rclpy.node.Node):
         MANUAL_CONTROL = 1
         AUTOMATIC_CONTROL = 2
         HOMING = 3
+
+    class StatusFlags(Enum):
+        NO_COMM_ELEV_AXIS      = 0b0000_0000_0000_0001
+        NO_COMM_PAN_AXIS       = 0b0000_0000_0000_0010
+        TIMEOUT_ROVER_GPS      = 0b0000_0000_0000_0100
+        TIMEOUT_ROVER_IMU      = 0b0000_0000_0000_1000
+        TIMEOUT_TOWER_GPS      = 0b0000_0000_0001_0000
+        TIMEOUT_TOWER_IMU      = 0b0000_0000_0010_0000
+        AXIS_UNCALIBRATED_PAN  = 0b0000_0000_0100_0000
+        AXIS_UNCALIBRATED_ELEV = 0b0000_0000_1000_0000
+        
 
     controlMode: AntennaControlMode
     is_calibrated: bool
@@ -466,10 +490,46 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
         msg.operating_mode = self.controlMode.value
 
-        msg.current_elevation_deg = none_to_float_zero(self.elev_axis.get_position_deg())
-        msg.current_pan_deg = none_to_float_zero(self.pan_axis.get_position_deg())
-        msg.current_elevation_deg_sec = none_to_float_zero(self.elev_axis.get_velocity_deg_sec())
-        msg.current_pan_deg_sec = none_to_float_zero(self.pan_axis.get_velocity_deg_sec())
+        msg.errors = 0
+
+        currentPanPos  = self.pan_axis.get_position_deg()
+        currentPanVel  = self.pan_axis.get_velocity_deg_sec()
+        currentElevPos = self.elev_axis.get_position_deg()
+        currentElevVel = self.elev_axis.get_velocity_deg_sec()
+
+        msg.current_elevation_deg = none_to_float_zero(currentElevPos)
+        msg.current_pan_deg = none_to_float_zero(currentPanPos)
+        msg.current_elevation_deg_sec = none_to_float_zero(currentElevVel)
+        msg.current_pan_deg_sec = none_to_float_zero(currentPanVel)
+
+        msg.current_pan_setpoint = self.pan_axis.get_setpoint()
+        msg.current_elevation_setpoint = self.elev_axis.get_setpoint()
+
+        # set status flags
+        if currentPanPos is None or currentPanVel is None:
+            msg.errors &= self.StatusFlags.NO_COMM_PAN_AXIS.value
+
+        if currentElevPos is None or currentElevVel is None:
+            msg.errors &= self.StatusFlags.NO_COMM_ELEV_AXIS.value
+
+        if self.rover_gps.max_timeout_exceeded():
+            msg.errors &= self.StatusFlags.TIMEOUT_ROVER_GPS.value
+
+        if self.rover_imu.max_timeout_exceeded():
+            msg.errors &= self.StatusFlags.TIMEOUT_ROVER_IMU.value
+
+        if self.tower_gps.max_timeout_exceeded():
+            msg.errors &= self.StatusFlags.TIMEOUT_TOWER_GPS.value
+
+        if self.tower_imu.max_timeout_exceeded():
+            msg.errors &= self.StatusFlags.TIMEOUT_TOWER_IMU.value
+
+        if not self.pan_axis.is_calibrated():
+            msg.errors &= self.StatusFlags.AXIS_UNCALIBRATED_PAN.value
+
+        if not self.elev_axis.is_calibrated():
+            msg.errors &= self.StatusFlags.AXIS_UNCALIBRATED_ELEV.value
+
         #TODO add checking for setpoint status
 
         self.statusPublisher.publish(msg)

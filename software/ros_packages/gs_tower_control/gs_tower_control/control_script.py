@@ -343,7 +343,7 @@ ROVER_IMU_ALLOWED_TIMEOUT = 3.0
 TOWER_GPS_ALLOWED_TIMEOUT = 15.0
 TOWER_IMU_ALLOWED_TIMEOUT = 15.0
 
-TOWER_HEADING_MECHANICAL_OFFSET = 90.0
+TOWER_HEADING_MECHANICAL_OFFSET = 180
 
 #physical dimensions
 ROVER_HEIGHT_METERS = 3
@@ -578,6 +578,13 @@ class AntennaTowerControlNode(rclpy.node.Node):
             rot = Rotation.from_quat(quat)
             euler = rot.as_euler("zyx", True)
             return LatLong(1, euler[1], euler[0])
+        
+        def normalize_angle(angle: float):
+            while angle < -180:
+                angle += 360
+            while angle > 180:
+                angle -= 360
+            return angle
             
         if not self.positions_updated():
             self.elev_axis.disable_axis()
@@ -636,7 +643,7 @@ class AntennaTowerControlNode(rclpy.node.Node):
 
             self.get_logger().info(f"Computed new angles: \n Pan: {getPanAngleDegrees(towerLoc, roverLoc)} \n Tilt: {getElevationAngleDegrees(towerLoc, roverLoc)}")
 
-            self.pan_axis.set_position(getPanAngleDegrees(towerLoc, roverLoc) - (self.tower_heading.get_value().data + TOWER_HEADING_MECHANICAL_OFFSET)) #TODO put this offset in a variable
+            self.pan_axis.set_position(normalize_angle(getPanAngleDegrees(towerLoc, roverLoc) - (self.tower_heading.get_value().data + TOWER_HEADING_MECHANICAL_OFFSET)))
             self.elev_axis.set_position(getElevationAngleDegrees(towerLoc, roverLoc))
         except Exception as e:
             self.get_logger().warn(f"Failed to compute new angles due to exception: {e}")

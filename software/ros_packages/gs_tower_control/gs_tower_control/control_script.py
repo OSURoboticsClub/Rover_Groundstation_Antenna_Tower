@@ -327,8 +327,8 @@ CONTROL_SERVICE = "/gs_tower_control/service"
 
 
 #factor to convert motor rotations to mechanism rotations for each axis
-PAN_CONVERSION_FACTOR  = 1.0/56.63
-ELEV_CONVERSION_FACTOR = 1.0/383.6
+PAN_CONVERSION_FACTOR  = 1.0/57.87
+ELEV_CONVERSION_FACTOR = 1.0/392.0
 #PAN_CONVERSION_FACTOR = 1.0/100
 #ELEV_CONVERSION_FACTOR = 1.0/100
 

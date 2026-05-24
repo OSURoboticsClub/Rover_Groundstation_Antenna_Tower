@@ -1,6 +1,7 @@
 import comms_ui.console_ui as c
 import comms_ui.console_ui_elements as ce
 import rclpy
+import time
 import comms_ui.comms_ui_ros_node as rn
 from gs_tower_control.control_script import AntennaControlMode, StatusFlags, AntennaControlStatus
 
@@ -123,12 +124,17 @@ def draw_status():
         statusTable.update_row("Pan Angle Deg:", str(status.current_pan_deg))
         statusTable.update_row("Pan Setpoint:", str(status.current_pan_setpoint))
     
+        errorList.clear()
+
         for f in StatusFlags:
-            errorList.clear()
             if f.value & status.errors:
                 errorList.add_item(f.name)
         
-        errorList.add_item(str(status.errors))
+        #errorList.add_item(str(status.errors))
+    else:
+        errorList.clear()
+        errorList.add_item("NO_STATUS")
+
 
 
 def main(args=None):

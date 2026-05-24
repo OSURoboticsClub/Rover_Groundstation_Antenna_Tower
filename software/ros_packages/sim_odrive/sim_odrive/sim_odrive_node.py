@@ -67,6 +67,10 @@ class SimOdriveNode(rclpy.node.Node):
                     self.motorVelocity = self.maxVelocity * clamp(abs(self.motorPosition - self.controlMessage.input_pos), 1, 0)
                 else:
                     self.motorVelocity = -self.maxVelocity * clamp(abs(self.motorPosition - self.controlMessage.input_pos), 1, 0)
+            
+            if (self.motorPosition >= self.upperLimit and self.motorVelocity > 0) or (self.motorPosition <= self.lowerLimit and self.motorVelocity < 0):
+                self.motorVelocity = 0
+
             self.motorPosition += (self.motorVelocity / 60) * deltaTime
 
         self.publish_controller_status()
@@ -82,8 +86,13 @@ class SimOdriveNode(rclpy.node.Node):
         self.motorVelocity = 0
         self.updateTime = time.time()
 
+        self.upperLimitParam = self.declare_parameter("upperStop", math.nan)
+        self.lowerLimitParam = self.declare_parameter("lowerStop", math.nan)
+
         self.maxVelocityParam = self.declare_parameter("maxVelocity", 500.0)
         self.maxVelocity = self.maxVelocityParam.get_parameter_value().double_value
+        self.upperLimit = self.upperLimitParam.get_parameter_value().double_value
+        self.lowerLimit = self.lowerLimitParam.get_parameter_value().double_value
         self.get_logger().info(f"Maximum velocity set to {self.maxVelocity} rpm")
 
         self.statusPublisher = self.create_publisher(

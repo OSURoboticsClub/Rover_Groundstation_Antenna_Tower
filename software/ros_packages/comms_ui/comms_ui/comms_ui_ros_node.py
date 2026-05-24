@@ -1,6 +1,6 @@
 import copy
-from urllib import request
 import rclpy
+import time
 import rclpy.node
 from gs_tower_interfaces.msg import AntennaControlStatus
 from gs_tower_interfaces.msg import AntennaControlManualInput
@@ -10,11 +10,18 @@ import gs_tower_control.control_script as control
 
 class CommsUINode(rclpy.node.Node):
 
+    STATUS_TIMEOUT = 5
+    _statusTime = time.time()
+
     def get_status(self):
+        if (time.time() - self._statusTime > self.STATUS_TIMEOUT):
+            return None
+        
         return copy.deepcopy(self._status)
     
 
     def status_callback(self, data: AntennaControlStatus):
+        self._statusTime = time.time()
         self._status = data
 
 

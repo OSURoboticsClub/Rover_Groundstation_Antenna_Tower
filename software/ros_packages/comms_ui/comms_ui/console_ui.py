@@ -1,13 +1,70 @@
-import math
-import copy
+import time
 import sys
 import tty
+import termios
 import os
-from typing import Any, Tuple
+from typing import Any, Callable, Tuple
 from typing import List
 import typing
 
 ESC = '\x1b'
+
+#TODO, proper support for OS command sequences. Currently only designed to support CSI commands.
+class EscapeSequence:
+    params: str
+    command: str
+    numberParams: list[int]
+
+    def __init__(self, seq: str):
+
+        self.params = ""
+        self.command = ""
+        self.numberParams = list()
+
+        paramSubstr = ""
+        substrIsNum = False
+
+        c = 0
+        if seq == "":
+            return
+        if seq[0] == ESC:
+            c += 1
+
+        while c in range(len(seq)):
+            if ord(seq[c]) in range(0x40, 0x7F) and seq[c] != "[":
+                self.command = seq[c]
+                break
+            else:
+                self.params += seq[c]
+
+                if seq[c].isdecimal():
+                    substrIsNum = True
+                    paramSubstr += seq[c]
+                else:
+                    if substrIsNum:
+                        self.numberParams.append(int(paramSubstr))
+                        substrIsNum = False
+                        paramSubstr = ""
+
+            c += 1
+
+        if substrIsNum:
+            self.numberParams.append(int(paramSubstr))
+
+
+#extracts all the escape sequences from a string
+def _get_escape_sequences(string: str) -> list[EscapeSequence]:
+    sequences = list()
+    start = 0
+
+    for i in range(len(string)):
+        if string[i] == ESC:
+            start = i
+        elif ord(string[i]) in range(0x40, 0x7F) and string[i] != "[":
+            sequences.append(EscapeSequence(string[start:i+1]))
+
+    return sequences
+
 
 class Color():
         r: int
@@ -44,24 +101,49 @@ class ConsoleUI:
     _inputBuffer: str
     _lastInput: str
     _keyBinds: dict[str, typing.Callable]
+    _fakeCursorDuration: float
+    _fakeCursorTime: float
+    _prevFrameTime: float
+    _updateCallbacks: dict[int, Callable]
+    _updateCallbackId: int
 
 
-    def __init__(self, exitCallback: typing.Callable, color: bool = True, sizeX: int = 80, sizeY: int = 24):
-        self.resize(sizeX, sizeY)
+    def __init__(self, exitCallback: typing.Callable, automaticSize = True, color: bool = True, sizeX: int = 80, sizeY: int = 24):
+        self._sizeX = sizeX
+        self._sizeY = sizeY
         self._color = color
         self._exitCallback = exitCallback
         self._collectInput = False
         self._inputBuffer = ""
         self._lastInput = ""
+        self._keyBinds = dict()
+        self._fakeCursorDuration = 0.25
+        self._fakeCursorTime = time.time()
+        self._prevFrameTime = time.time()
+        self._updateCallbacks = dict()
+        self._updateCallbackId = 0
 
         #initialize console
+        #clear console
+        self._write_cursor_position(0, 0)
+        sys.stdout.write(ESC+"[3J"+ESC+"[2J")
+        sys.stdout.write("Initializing ...")
         #disable automatic line wrapping
         sys.stdout.write(ESC+"[=7l")
+        #clear stdin
+        sys.stdin.flush()
+
+        sys.stdout.flush()
+
         #set console to raw, non-blocking mode
+        self._originalAttributes = termios.tcgetattr(sys.stdin.fileno())
         tty.setraw(sys.stdin)
         os.set_blocking(sys.stdin.fileno(), False)
 
-        #TODO get console size from esc sequence
+        if automaticSize:
+            self.auto_resize()
+        else:
+            self.resize(sizeX, sizeY)
 
     
     def _console_write(self, string: str):
@@ -74,6 +156,7 @@ class ConsoleUI:
         os.set_blocking(sys.stdin.fileno(), True)
 
         sys.stdout.write(string)
+        sys.stdout.flush()
 
         os.set_blocking(sys.stdin.fileno(), False)
 
@@ -98,7 +181,10 @@ class ConsoleUI:
             self._console_write(ESC+"[?25l")
 
 
-    def _set_cursor_position(self, x: int, y: int):
+    def _write_cursor_position(self, x: int, y: int):
+        if x >= self._sizeX or y >= self._sizeY:
+            raise ValueError("Cursor must be inside console bounds!")
+        
         self._console_write(ESC+f"[{y+1};{x+1}H")
 
 
@@ -112,9 +198,39 @@ class ConsoleUI:
     def _set_color(self, foreground: Color, background: Color):
         if self._color:
             self._console_write(self._color_str(foreground, background))
-            sys.stdout.flush()
 
 
+    def get_size(self) -> Tuple[int, int]:
+        return (self._sizeX, self._sizeY)
+
+
+    def auto_resize(self):
+        #request console size
+        self._console_write(ESC+"[9999;9999H")
+        self._console_write(ESC+"[6n")
+
+        #attempt to read console size from stdin
+        time.sleep(2)
+
+        input = ""
+
+        try:
+            input = sys.stdin.read()
+        except Exception:
+            pass
+
+        seq = _get_escape_sequences(input)
+
+        for s in seq:
+            if s.command == "R":
+                if len(s.numberParams) == 2:
+                    self._sizeY = s.numberParams[0] - 1
+                    self._sizeX = s.numberParams[1] - 1
+
+        self.resize(self._sizeX, self._sizeY)
+
+
+    #changes the size of the console
     def resize(self, sizeX: int, sizeY: int):
 
         if sizeX < 0 or sizeY < 0:
@@ -132,6 +248,7 @@ class ConsoleUI:
                 self._colorsBuffer[x].append((Color(255,255,255), Color(0,0,0)))
 
     
+    #fills the output buffer with the specified color/char
     def fill_buffer(self, char: str, fg: Color, bg: Color):
         if len(char) > 1:
             raise ValueError("Char must be single character.")
@@ -142,6 +259,7 @@ class ConsoleUI:
                 self._colorsBuffer[x][y] = (fg, bg)
 
     
+    #draw a character at a given location
     def draw_char(self, x: int, y: int, char: str, fg: Color, bg: Color):
         if x < 0 or y < 0 or x >= self._sizeX or y >= self._sizeY:
             return
@@ -150,11 +268,12 @@ class ConsoleUI:
         self._colorsBuffer[x][y] = (fg, bg)
 
     
+    #draw a string at a given location (coordinate indicates left side)
     def draw_string(self, x: int, y: int, string: str, fg: Color, bg: Color, maxLen: int = sys.maxsize):
         for i in range(len(string) if len(string) < maxLen else maxLen):
             self.draw_char(x + i, y, string[i], fg, bg)
 
-    
+
     def draw_table(
             self,
             x: int,
@@ -164,13 +283,16 @@ class ConsoleUI:
             colWidth: int = 0,
             fixedColWidth: bool = False,
     ):
+        raise NotImplemented()
         pass
 
 
+    #draw output buffer to console
     def write_buffer(self):
         frame = ""
 
-        self._set_cursor_position(0, 0)
+        self._write_cursor_position(0, 0)
+        self._console_write(ESC+"[3J")
         self._set_cursor_visibility(False)
 
         prevColorStr = None
@@ -187,14 +309,29 @@ class ConsoleUI:
             frame += "\r\n"
 
         self._console_write(frame)
-        sys.stdout.flush()
+        self._prevFrameTime = time.time()
+
 
     #bind callback to a keyboard input. 
     def bind_key(self, key: int, callback: typing.Callable):
-        pass
+        raise NotImplemented
 
 
-    def get_input(self, x: int, y: int, fg: Color, bg: Color, boxLength: typing.Optional[int] = None):
+    #registers a callback that is run when update is called. Returns the callback's unique id
+    def register_update_callback(self, callback: typing.Callable) -> int:
+        self._updateCallbacks.update({self._updateCallbackId: callback})
+        id = self._updateCallbackId
+        self._updateCallbackId += 1
+        return id
+
+
+    #removes a callback from the list
+    def remove_update_callback(self, id: int):
+        self._updateCallbacks.pop(id)
+    
+    
+    #Allows user input at a given location.
+    def get_input(self, x: int, y: int, fg: Color, bg: Color, boxLength: typing.Optional[int] = None, showCursor: bool = True):
         self._inputX = x
         self._inputY = y
         if boxLength is None or x + boxLength >= self._sizeX:
@@ -203,12 +340,27 @@ class ConsoleUI:
             self._inputBoxLength = boxLength
         self._collectInput = True
         self._inputColor = (fg, bg)
+        self._cursorVisibility = showCursor
+
+
+    def stop_input(self):
+        self._collectInput = False
+        self._inputBuffer = ""
+
+    
+    def collecting_input(self) -> bool:
+        return self._collectInput
 
 
     def get_last_input(self) -> str:
         return self._lastInput
 
 
+    def get_live_input_buffer(self) -> str:
+        return self._inputBuffer
+
+
+    #process input in stdin buffer
     def handle_input(self):
 
         #return
@@ -225,19 +377,20 @@ class ConsoleUI:
         try:
             input = sys.stdin.read()
         except Exception:
-            c = ""
+            pass
 
         for c in input:
             if escSeq:
-                if ord(c) >= 97:
+                if ord(c) in range(0x40, 0x7F) and c != "[":
                     escSeq = False
                     continue
                 #TODO handle escape sequences here
-            if c == ESC:
+            elif c == ESC:
                 escSeq = True
             #handle CTRL+C
             elif ord(c) == 3:
                 self._exitCallback()
+                self.cleanup()
             #handle backspace and delete
             elif ord(c) == 8 or ord(c) == 127:
                 #if currently collecting input, remove most last char from input buffer
@@ -249,7 +402,9 @@ class ConsoleUI:
                 #if collecting input, finish and save buffer
                 if self._collectInput:
                     self._collectInput = False
+                    self._cursorVisibility = False
                     self._lastInput = self._inputBuffer
+                    self._inputBuffer = ""
                 #otherwise run a keybind if one exists
                 else:
                     run_keybind(c)
@@ -266,15 +421,48 @@ class ConsoleUI:
         if self._collectInput:
             startIndex = 0
             if len(self._inputBuffer) > self._inputBoxLength:
-                index = len(self._inputBuffer) - self._inputBoxLength
+                startIndex = len(self._inputBuffer) - self._inputBoxLength
             
             for i in range(len(self._inputBuffer) - startIndex):
-                self.draw_char(self._inputX + i, self._inputY, self._inputBuffer[i], self._inputColor[0], self._inputColor[1])
+                self.draw_char(self._inputX + i, self._inputY, self._inputBuffer[i + startIndex], self._inputColor[0], self._inputColor[1])
 
-            #self._set_cursor_position(
-            #    self._inputX + (self._inputBoxLength - 1 if self._inputBoxLength >= len(self._inputBuffer) else len(self._inputBuffer)), 
-            #    self._inputY)
-            #self._set_cursor_visibility(True)
+            curTime = time.time()
+            if curTime - self._fakeCursorTime > self._fakeCursorDuration * 2:
+                self._fakeCursorTime = curTime
+
+            #TODO fix cursor colors
+            if curTime - self._fakeCursorTime > self._fakeCursorDuration:
+                x = self._inputX + len(self._inputBuffer) #(self._inputBoxLength - 1 if self._inputBoxLength >= len(self._inputBuffer) else len(self._inputBuffer))
+                if x > self._inputX + self._inputBoxLength - 1:
+                    x = self._inputX + self._inputBoxLength - 1
+                self._colorsBuffer[x][self._inputY] = (Color(0, 0, 0), Color(255, 255, 255))
+
+
+    def update(self, fg: Color = Color(255,255,255), bg: Color = Color(0,0,0), autoResize=True):
+
+        #if autoResize:
+        #    self.auto_resize() need to find a new way to handle this
+
+        self.fill_buffer("", fg, bg)
+
+        #handle user input
+        self.handle_input()
+
+        #run update callbacks
+        for c in self._updateCallbacks.values():
+            c()
+
+        self.write_buffer()
+
+    def cleanup(self):
+        termios.tcsetattr(sys.stdin.fileno(), termios.TCSAFLUSH, self._originalAttributes)
+
+
+        
+        
+
+
+    
 
 
 

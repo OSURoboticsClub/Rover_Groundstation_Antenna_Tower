@@ -24,6 +24,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            "cli = comms_ui.comms_cli:main",
+            "gui = comms_ui.comms_ui:main"
         ],
     },
 )

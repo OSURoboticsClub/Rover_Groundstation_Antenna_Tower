@@ -20,8 +20,15 @@ def generate_launch_description():
         )
     )
 
+    sensors = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [os.path.join(get_package_share_directory('gs_tower_sensors'), 'launch'), '/launch.py']
+        )
+    )
+
     return LaunchDescription([
         odrive,
-        antenna_control
+        antenna_control,
+        sensors
     ])
 

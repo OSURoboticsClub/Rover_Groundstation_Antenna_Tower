@@ -71,7 +71,7 @@ class SimOdriveNode(rclpy.node.Node):
             if (self.motorPosition >= self.upperLimit and self.motorVelocity > 0) or (self.motorPosition <= self.lowerLimit and self.motorVelocity < 0):
                 self.motorVelocity = 0
 
-            self.motorPosition += (self.motorVelocity / 60) * deltaTime
+            self.motorPosition += (self.motorVelocity) * deltaTime
 
         self.publish_controller_status()
             

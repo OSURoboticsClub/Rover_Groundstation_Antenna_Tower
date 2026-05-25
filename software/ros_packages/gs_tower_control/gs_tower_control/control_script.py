@@ -4,6 +4,7 @@ from copy import deepcopy
 from curses import flash
 from faulthandler import is_enabled
 import math
+from collections import deque
 import time
 import typing
 from enum import Enum
@@ -72,7 +73,19 @@ class AxisRange:
             return self._min
         else:
             return a
-        
+
+
+class MovingAverage:
+    def __init__(self, windowSize: int) -> None:
+        self._values = deque(maxlen=windowSize)
+    
+    def add_value(self, val: float):
+        self._values.append(val)
+
+    def get_average(self):
+        return sum(self._values) / len(self._values)
+
+
 
 T = TypeVar('T')
 class TemporalValue(Generic[T]):
@@ -199,7 +212,7 @@ class OdriveAxis:
         if self._status.get_value() is None or self._status.max_timeout_exceeded():
             self._node.get_logger().warn(f"Axis {self._name} status is stale or not yet received, cannot get velocity")
             return None
-        return self._inversion * (self._status.get_value().vel_estimate * self._conversionFactor * 360 / 60) # type: ignore
+        return self._inversion * (self._status.get_value().vel_estimate * self._conversionFactor * 360) # type: ignore
 
 
     def get_position_deg(self) -> typing.Optional[float]:
@@ -255,7 +268,7 @@ class OdriveAxis:
         msg = ControlMessage()
         msg.control_mode = ControlMode.VELOCITY_CONTROL
         msg.input_mode = InputMode.PASSTHROUGH
-        msg.input_vel = self._inversion * ((vel / self._conversionFactor / 360) * 60) #convert from mechanism deg/s to motor revolutions/min
+        msg.input_vel = self._inversion * ((vel / self._conversionFactor / 360)) #convert from mechanism deg/s to motor revolutions/sec
         self._controlPublisher.publish(msg)
 
 
@@ -358,12 +371,13 @@ ELEV_AXIS_POSITION_TOLERANCE_DEG = 1.0
 PAN_AXIS_POSITION_TOLERANCE_DEG  = 1.0
 
 #homing motor spin up time
+HOMING_AVG_WINDOW_SIZE = 5
 HOMING_START_TIME_SEC = 1.5
-ELEV_HOMING_VELOCITY = 12 #deg/s
-ELEV_HOMING_VELOCITY_THRESHOLD = 0.1 #homing is done when velocity is below THRESHOLD * VEL
+ELEV_HOMING_VELOCITY = 3 #deg/s
+ELEV_HOMING_VELOCITY_THRESHOLD = 0.5 #homing is done when velocity is below THRESHOLD * VEL
 ELEV_HOMING_STOP_POS = 27.5
 PAN_HOMING_STOP_POS = 180.0
-PAN_HOMING_VELOCITY = 0.5 #deg/s
+PAN_HOMING_VELOCITY = 10 #deg/s
 PAN_HOMING_VELOCITY_THRESHOLD = 0.7
 
 #control freq Hz
@@ -490,6 +504,8 @@ class AntennaTowerControlNode(rclpy.node.Node):
         elif (request.mode == AntennaControlMode.HOMING.value):
             self.home_elev = False
             self.home_pan = False
+            self.pan_vel = MovingAverage(HOMING_AVG_WINDOW_SIZE)
+            self.elev_vel = MovingAverage(HOMING_AVG_WINDOW_SIZE)
 
             if self.elev_axis.get_position_deg() is not None:
                 self.home_elev = True
@@ -685,13 +701,24 @@ class AntennaTowerControlNode(rclpy.node.Node):
                     self.elev_axis.set_velocity(ELEV_HOMING_VELOCITY)
                 elif self.homing_timer.max_timeout_exceeded():
                     self.homingStep = self.HomingStep.ELEV_AXIS_RUN
+                vel = self.elev_axis.get_velocity_deg_sec()
+                if vel is None:
+                    self.elev_axis.disable_axis()
+                    self.homingStep = self.HomingStep.PAN_STATE_CHANGE if self.home_pan else self.HomingStep.HOMING_CLEANUP
+                    self.get_logger().error("Communication lost with elevation axis, homing of axis aborted.")
+                    return
+                else:
+                    self.pan_vel.add_value(vel)    
             case self.HomingStep.ELEV_AXIS_RUN:
                 vel = self.elev_axis.get_velocity_deg_sec()
                 if vel is None:
                     self.elev_axis.disable_axis()
                     self.homingStep = self.HomingStep.PAN_STATE_CHANGE if self.home_pan else self.HomingStep.HOMING_CLEANUP
                     self.get_logger().error("Communication lost with elevation axis, homing of axis aborted.")
-                elif abs(vel) < abs(ELEV_HOMING_VELOCITY * ELEV_HOMING_VELOCITY_THRESHOLD):
+                else:
+                    self.elev_vel.add_value(vel)
+
+                if abs(self.elev_vel.get_average()) < abs(ELEV_HOMING_VELOCITY * ELEV_HOMING_VELOCITY_THRESHOLD):
                     self.elev_axis.disable_axis()
                     self.elev_axis.reset_pos(ELEV_HOMING_STOP_POS)
                     self.get_logger().info("Homing of elevation axis completed successfully")
@@ -712,13 +739,25 @@ class AntennaTowerControlNode(rclpy.node.Node):
                     self.pan_axis.set_velocity(PAN_HOMING_VELOCITY)
                 elif self.homing_timer.max_timeout_exceeded():
                     self.homingStep = self.HomingStep.PAN_AXIS_RUN
+                vel = self.pan_axis.get_velocity_deg_sec()
+                if vel is None:
+                    self.pan_axis.disable_axis()
+                    self.homingStep = self.HomingStep.HOMING_CLEANUP
+                    self.get_logger().error("Communication lost with pan axis, homing of axis aborted.")
+                    return
+                else:
+                    self.pan_vel.add_value(vel)    
             case self.HomingStep.PAN_AXIS_RUN:
                 vel = self.pan_axis.get_velocity_deg_sec()
                 if vel is None:
                     self.pan_axis.disable_axis()
                     self.homingStep = self.HomingStep.HOMING_CLEANUP
                     self.get_logger().error("Communication lost with pan axis, homing of axis aborted.")
-                elif abs(vel) < abs(PAN_HOMING_VELOCITY * PAN_HOMING_VELOCITY_THRESHOLD):
+                    return
+                else:
+                    self.pan_vel.add_value(vel)
+                
+                if abs(self.pan_vel.get_average()) < abs(PAN_HOMING_VELOCITY * PAN_HOMING_VELOCITY_THRESHOLD):
                     self.pan_axis.disable_axis()
                     self.pan_axis.reset_pos(PAN_HOMING_STOP_POS)
                     self.get_logger().info("Homing of pan axis completed successfully")

@@ -9,7 +9,7 @@ def generate_launch_description():
             executable = 'sim_odrive',
             name = 'sim_odrive_pan',
             parameters = [
-                {"maxVelocity": 500.0},
+                {"maxVelocity": 5.0},
                 {"upperStop": 25.0},
                 {"lowerStop": -28.315}
             ]
@@ -20,7 +20,7 @@ def generate_launch_description():
             executable = 'sim_odrive',
             name = 'sim_odrive_elev',
             parameters = [
-                {"maxVelocity": 500.0},
+                {"maxVelocity": 5.0},
                 {"upperStop": 29.3},
                 {"lowerStop": -20.0}
             ]

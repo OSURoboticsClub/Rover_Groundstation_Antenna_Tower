@@ -9,7 +9,7 @@ def generate_launch_description():
             executable = 'imu',
             name = 'imu',
             parameters = [
-                {"magnetic_declination": 14.25}
+                {"magnetic_declination": 9.91}
             ]
         ),
         Node (

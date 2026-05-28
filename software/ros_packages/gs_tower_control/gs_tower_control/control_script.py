@@ -352,10 +352,10 @@ PAN_ANGLE_RANGE  = AxisRange(-145, 145)
 ELEV_ANGLE_RANGE = AxisRange(-24,  25)
 
 #timeouts
-ROVER_GPS_ALLOWED_TIMEOUT = 3.5
-ROVER_IMU_ALLOWED_TIMEOUT = 3.0
-TOWER_GPS_ALLOWED_TIMEOUT = 15.0
-TOWER_IMU_ALLOWED_TIMEOUT = 15.0
+ROVER_GPS_ALLOWED_TIMEOUT = 15.0
+ROVER_IMU_ALLOWED_TIMEOUT = 15.0
+TOWER_GPS_ALLOWED_TIMEOUT = math.nan
+TOWER_IMU_ALLOWED_TIMEOUT = math.nan
 
 TOWER_HEADING_MECHANICAL_OFFSET = 0
 
@@ -616,7 +616,7 @@ class AntennaTowerControlNode(rclpy.node.Node):
                 rawLoc.latitude,
                 rawLoc.longitude
             )
-            self.get_logger.info(f"Rover Location: {roverLoc}")
+            self.get_logger().info(f"Rover Location: {roverLoc}")
 
             #rawLoc = self.rover_gps.get_value()
             #roverBaseLoc = LatLong(
@@ -642,7 +642,7 @@ class AntennaTowerControlNode(rclpy.node.Node):
                 rawLoc.latitude,
                 rawLoc.longitude
             )
-            self.get_logger.info(f"Tower Location: {towerLoc}")
+            self.get_logger().info(f"Tower Location: {towerLoc}")
 
             #towerBaseLoc = LatLong(
             #    EARTH_RADIUS_M + rawLoc.altitude,
@@ -660,9 +660,11 @@ class AntennaTowerControlNode(rclpy.node.Node):
             #self.get_logger().info(f"Tower Ant. Offset {towerAntennaOffset}")
             #towerLoc = towerBaseLoc + towerAntennaOffset
 
+            towerHeading = self.tower_heading.get_value().data
+            self.get_logger().info(f"Tower Heading: {towerHeading}")
             self.get_logger().info(f"Computed new angles: \n Pan: {getPanAngleDegrees(towerLoc, roverLoc)} \n Tilt: {getElevationAngleDegrees(towerLoc, roverLoc)}")
 
-            self.pan_axis.set_position(normalize_angle(getPanAngleDegrees(towerLoc, roverLoc) - (self.tower_heading.get_value().data + TOWER_HEADING_MECHANICAL_OFFSET)))
+            self.pan_axis.set_position(normalize_angle(getPanAngleDegrees(towerLoc, roverLoc) - (towerHeading + TOWER_HEADING_MECHANICAL_OFFSET)))
             self.elev_axis.set_position(getElevationAngleDegrees(towerLoc, roverLoc))
         except Exception as e:
             self.get_logger().warn(f"Failed to compute new angles due to exception: {e}")
